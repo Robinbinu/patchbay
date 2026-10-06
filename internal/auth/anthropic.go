@@ -119,8 +119,6 @@ func anthropicExchange(ctx context.Context, body map[string]any, phase string) (
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if phase == "refresh" {
-		// Claude Code sends these on refresh; harmless and matches the server's
-		// expectation for the rotating token.
 		req.Header.Set("anthropic-beta", anthropicOAuthBeta)
 	}
 	resp, err := http.DefaultClient.Do(req)
