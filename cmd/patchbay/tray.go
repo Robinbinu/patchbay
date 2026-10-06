@@ -284,7 +284,7 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 			case <-copyAnthropic.ClickedCh:
 				_ = clipboardCopy(fmt.Sprintf("http://%s", cfg.Listen))
 			case <-copyKey.ClickedCh:
-				_ = clipboardCopy(cfg.LocalAPIKey)
+				_ = clipboardCopy(cfg.LocalKey())
 			case <-rotate.ClickedCh:
 				cfg.RotateLocalKey()
 				_ = cfg.Save()

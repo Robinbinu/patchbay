@@ -186,7 +186,18 @@ func (c *Config) Upsert(p Provider) {
 	c.Providers = append(c.Providers, p)
 }
 
-// RotateLocalKey generates a fresh local API key.
-func (c *Config) RotateLocalKey() {
+// LocalKey returns the local API key clients must present. The proxy reads it
+// on every request while the menu may rotate it, so access goes through c.mu.
+func (c *Config) LocalKey() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.LocalAPIKey
+}
+
+// RotateLocalKey generates a fresh local API key and returns it.
+func (c *Config) RotateLocalKey() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.LocalAPIKey = newLocalKey()
+	return c.LocalAPIKey
 }

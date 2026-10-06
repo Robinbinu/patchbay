@@ -70,7 +70,7 @@ func main() {
 func runServe(cfg *config.Config, mgr *auth.Manager) {
 	srv := proxy.New(cfg, mgr)
 	fmt.Printf("Patchbay listening on http://%s\n", cfg.Listen)
-	fmt.Printf("  Local API key: %s\n", cfg.LocalAPIKey)
+	fmt.Printf("  Local API key: %s\n", cfg.LocalKey())
 	fmt.Printf("  OpenAI base:    http://%s/v1\n", cfg.Listen)
 	fmt.Printf("  Anthropic base: http://%s\n", cfg.Listen)
 	fmt.Println("  Endpoints: /v1/models  /v1/chat/completions  /v1/responses  /v1/messages")
@@ -194,12 +194,12 @@ func runProvider(cfg *config.Config, args []string) {
 
 func runKey(cfg *config.Config, args []string) {
 	if len(args) >= 1 && args[0] == "rotate" {
-		cfg.RotateLocalKey()
+		key := cfg.RotateLocalKey()
 		check(cfg.Save())
-		fmt.Printf("New local API key: %s\n", cfg.LocalAPIKey)
+		fmt.Printf("New local API key: %s\n", key)
 		return
 	}
-	fmt.Println(cfg.LocalAPIKey)
+	fmt.Println(cfg.LocalKey())
 }
 
 func usage() {

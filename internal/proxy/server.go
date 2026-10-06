@@ -63,7 +63,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) authorized(r *http.Request) bool {
-	want := s.cfg.LocalAPIKey
+	want := s.cfg.LocalKey()
 	if want == "" {
 		return true
 	}
