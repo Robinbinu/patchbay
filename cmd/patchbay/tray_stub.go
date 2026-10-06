@@ -7,8 +7,9 @@ import (
 	"github.com/robin/patchbay/internal/config"
 )
 
-// runUI blocks forever in the default build; the HTTP server runs on its own
-// goroutine. Build with `-tags tray` for the menu-bar UI (fyne.io/systray).
-func runUI(_ *config.Config, _ *auth.Manager) {
-	select {}
+// runUI waits on the HTTP server in the default build and exits if it stops.
+// Build with `-tags tray` for the menu-bar UI (fyne.io/systray).
+func runUI(_ *config.Config, _ *auth.Manager, runner *proxyRunner, startErr error) {
+	check(startErr)
+	check(<-runner.Failed())
 }
