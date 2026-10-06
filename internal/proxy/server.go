@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -77,13 +78,45 @@ func (s *Server) authorized(r *http.Request) bool {
 	return false
 }
 
+// handleModels lists every routable model, sorted so tools' model pickers stay
+// stable. Anthropic clients (they send anthropic-version) get the Anthropic
+// list format and only the models that work on /v1/messages; everyone else
+// gets the OpenAI format with each model's surface.
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	models := s.refreshIndex(r.Context())
+	sort.Slice(models, func(i, j int) bool { return canonical(models[i]) < canonical(models[j]) })
+
+	if r.Header.Get("anthropic-version") != "" {
+		data := make([]map[string]any, 0, len(models))
+		for _, m := range models {
+			if m.Surface != providers.SurfaceMessages {
+				continue
+			}
+			name := m.Label
+			if name == "" {
+				name = m.ID
+			}
+			data = append(data, map[string]any{
+				"type":         "model",
+				"id":           canonical(m),
+				"display_name": name,
+				"created_at":   "1970-01-01T00:00:00Z", // upstream lists don't all carry dates
+			})
+		}
+		resp := map[string]any{"data": data, "has_more": false, "first_id": nil, "last_id": nil}
+		if len(data) > 0 {
+			resp["first_id"], resp["last_id"] = data[0]["id"], data[len(data)-1]["id"]
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
 	data := make([]map[string]any, 0, len(models))
 	for _, m := range models {
 		data = append(data, map[string]any{
 			"id":       canonical(m), // provider-prefixed, e.g. "codex/gpt-5.6-luna"
 			"object":   "model",
+			"created":  0, // required by strict OpenAI clients; upstreams don't all provide it
 			"owned_by": m.Provider,
 			"surface":  m.Surface,
 		})
