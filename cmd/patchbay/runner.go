@@ -78,6 +78,14 @@ func (r *proxyRunner) Stop() {
 	}
 }
 
+// SetAddr changes where the next Start listens; a running server keeps its
+// address until it is stopped.
+func (r *proxyRunner) SetAddr(addr string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.addr = addr
+}
+
 func (r *proxyRunner) Running() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -205,6 +205,20 @@ func (c *Config) Upsert(p Provider) {
 	c.Providers = append(c.Providers, p)
 }
 
+// ListenAddr returns the host:port the proxy listens on.
+func (c *Config) ListenAddr() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Listen
+}
+
+// SetListen changes the listen address; the caller saves.
+func (c *Config) SetListen(addr string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Listen = addr
+}
+
 // LocalKey returns the local API key clients must present. The proxy reads it
 // on every request while the menu may rotate it, so access goes through c.mu.
 func (c *Config) LocalKey() string {

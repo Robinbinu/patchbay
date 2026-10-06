@@ -58,6 +58,8 @@ func main() {
 		runProvider(cfg, args)
 	case "key":
 		runKey(cfg, args)
+	case "port":
+		runPort(cfg, args)
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -69,17 +71,35 @@ func main() {
 
 func runServe(cfg *config.Config, mgr *auth.Manager) {
 	srv := proxy.New(cfg, mgr)
-	fmt.Printf("Patchbay listening on http://%s\n", cfg.Listen)
-	fmt.Printf("  Local API key: %s\n", cfg.LocalKey())
-	fmt.Printf("  OpenAI base:    http://%s/v1\n", cfg.Listen)
-	fmt.Printf("  Anthropic base: http://%s\n", cfg.Listen)
-	fmt.Println("  Endpoints: /v1/models  /v1/chat/completions  /v1/responses  /v1/messages")
 	// The HTTP server runs on a background goroutine so the main goroutine is
 	// free for the UI loop: on macOS the menu-bar (Cocoa) event loop must own
 	// the main thread. Without -tags tray, runUI exits when the server stops.
-	runner := newProxyRunner(cfg.Listen, srv.Handler())
-	startErr := runner.Start()
-	runUI(cfg, mgr, runner, startErr)
+	runner := newProxyRunner(cfg.ListenAddr(), srv.Handler())
+	moved, startErr := startProxy(cfg, runner)
+	if moved != "" {
+		fmt.Printf("Port %d was taken; moved to %s (saved).\n", portOf(moved), cfg.ListenAddr())
+	}
+	if startErr == nil {
+		addr := cfg.ListenAddr()
+		fmt.Printf("Patchbay listening on http://%s\n", addr)
+		fmt.Printf("  Local API key: %s\n", cfg.LocalKey())
+		fmt.Printf("  OpenAI base:    http://%s/v1\n", addr)
+		fmt.Printf("  Anthropic base: http://%s\n", addr)
+		fmt.Println("  Endpoints: /v1/models  /v1/chat/completions  /v1/responses  /v1/messages")
+	}
+	runUI(cfg, mgr, runner, moved, startErr)
+}
+
+func runPort(cfg *config.Config, args []string) {
+	if len(args) < 1 {
+		fmt.Println(portOf(cfg.ListenAddr()))
+		return
+	}
+	port, err := parsePort(args[0])
+	check(err)
+	cfg.SetListen(withPort(cfg.ListenAddr(), port))
+	check(cfg.Save())
+	fmt.Printf("Patchbay will listen on http://%s. Restart Patchbay, then update your tools' base URL.\n", cfg.ListenAddr())
 }
 
 func runLogin(cfg *config.Config, mgr *auth.Manager, args []string) {
@@ -214,6 +234,7 @@ Usage:
   patchbay provider key <id> <api-key>
   patchbay provider rm <id>
   patchbay key [rotate]               Print (or rotate) the local API key
+  patchbay port [number]              Print (or set) the port; a taken port moves to the next free one
   patchbay version                    Print the Patchbay version
 
 Provider kinds:
