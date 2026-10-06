@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # macOS: the .app needs cgo for the menu bar plus sips, iconutil, lipo,
+    # codesign and hdiutil. Windows and Linux artifacts cross-compile.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: go test ./...
+      - name: Build release artifacts
+        run: scripts/build-release.sh "$GITHUB_REF_NAME"
+      - name: Write release notes
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          {
+            echo "## Download"
+            echo
+            echo "| Platform | File |"
+            echo "| --- | --- |"
+            echo "| macOS 12+ (Apple silicon & Intel) | \`Patchbay-$GITHUB_REF_NAME-macOS.dmg\` |"
+            echo "| Windows 10/11 x64 | \`Patchbay-$GITHUB_REF_NAME-windows-x64.zip\` |"
+            echo "| Windows on ARM | \`Patchbay-$GITHUB_REF_NAME-windows-arm64.zip\` |"
+            echo "| Linux x64 / arm64 | \`patchbay_${GITHUB_REF_NAME}_linux_<arch>.tar.gz\` |"
+            echo "| macOS CLI | \`patchbay_${GITHUB_REF_NAME}_darwin_universal.tar.gz\` |"
+            echo
+            echo "First launch: macOS builds are not notarized yet (right-click → **Open**); Windows builds are not signed yet (SmartScreen → **More info → Run anyway**). See the [README](https://github.com/$GITHUB_REPOSITORY#install)."
+            echo
+            awk -v ver="$v" '
+              index($0, "## [" ver "]") == 1 { on = 1; next }
+              on && /^## \[/ { exit }
+              on && /^\[/ { next }
+              on { print }
+            ' CHANGELOG.md
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Patchbay $GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag $pre
