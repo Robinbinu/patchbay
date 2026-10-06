@@ -32,6 +32,17 @@ First public beta.
   version info, Linux and macOS CLI archives.
 - `patchbay version`.
 
+### Fixed (since the first beta build)
+
+- Unknown models return `404` instead of being sent to an arbitrary provider;
+  `<provider>/<model>` still reaches models a provider doesn't list.
+- A login made in a terminal while the app is running is no longer lost: the
+  credential store picks up changes on disk, and a token refresh never
+  overwrites a newer login or a logout.
+- Rotating the local key while requests are in flight is race-free.
+- Default providers you remove stay removed.
+- Thinking requests to Claude no longer carry an invalid `extra_body` field.
+
 ### Known limitations
 
 - Request bodies are forwarded as-is; there is no translation between API
