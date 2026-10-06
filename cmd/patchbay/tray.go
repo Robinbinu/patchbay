@@ -18,10 +18,11 @@ import (
 // runUI runs the menu-bar event loop on the main goroutine. On macOS the Cocoa
 // loop systray drives must own the main thread, so the caller runs the HTTP
 // server on a background goroutine and calls this last. systray.Run blocks
-// until the user quits. If the server stops (say its port is taken), the icon
-// shows it instead of the app vanishing.
-func runUI(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
-	systray.Run(func() { onReady(cfg, mgr, proxyErr) }, func() { os.Exit(0) })
+// until the user quits. If the server can't start or stops on its own (say its
+// port is taken), the icon shows it instead of the app vanishing, and the menu
+// can start it again.
+func runUI(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startErr error) {
+	systray.Run(func() { onReady(cfg, mgr, runner, startErr) }, func() { os.Exit(0) })
 }
 
 // providerMenu is the set of items that make up one provider's submenu.
@@ -34,7 +35,7 @@ type providerMenu struct {
 	logout  *systray.MenuItem
 }
 
-func onReady(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
+func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startErr error) {
 	var shown []byte
 	setState := func(st trayState) {
 		if icon := trayIcon(st); !bytes.Equal(icon, shown) {
@@ -46,6 +47,8 @@ func onReady(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
 			}
 		}
 		switch st {
+		case stateStopped:
+			systray.SetTooltip("Patchbay — proxy off")
 		case stateProxyDown:
 			systray.SetTooltip("Patchbay — proxy stopped")
 		case stateNeedsLogin:
@@ -65,6 +68,7 @@ func onReady(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
 	copyEP := ep.AddSubMenuItem("Copy OpenAI base URL", "")
 	copyKey := ep.AddSubMenuItem("Copy local API key", "")
 	rotate := ep.AddSubMenuItem("Rotate local API key", "Issue a new key; existing clients must update")
+	power := systray.AddMenuItem("Stop proxy", "Stop or start serving; the menu bar stays")
 	systray.AddSeparator()
 
 	// ---- providers ---------------------------------------------------------
@@ -73,6 +77,9 @@ func onReady(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
 	menus := map[string]*providerMenu{}
 	for _, p := range cfg.Providers {
 		pm := &providerMenu{parent: systray.AddMenuItem(p.Label, "")}
+		if fav := providerFavicon(p); fav != nil {
+			pm.parent.SetIcon(menuIcon(fav))
+		}
 		pm.status = pm.parent.AddSubMenuItem("", "")
 		pm.status.Disable()
 		pm.account = pm.parent.AddSubMenuItem("", "")
@@ -104,7 +111,11 @@ func onReady(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
 	systray.AddSeparator()
 	quit := systray.AddMenuItem("Quit Patchbay", "Stop the proxy and the menu bar")
 
-	var proxyFail error
+	proxyFail := startErr
+	stopped := false
+	if startErr != nil {
+		fmt.Fprintln(os.Stderr, "error:", startErr)
+	}
 	refresh := func() {
 		warn := false
 		for _, s := range mgr.Statuses(cfg) {
@@ -139,11 +150,22 @@ func onReady(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
 				warn = true
 			}
 		}
-		if proxyFail != nil {
+		switch {
+		case stopped:
+			down.SetTitle("Proxy is off")
+			down.Show()
+		case proxyFail != nil:
 			down.SetTitle("Proxy stopped: " + proxyFail.Error())
 			down.Show()
+		default:
+			down.Hide()
 		}
-		setState(stateFor(proxyFail, warn))
+		if runner.Running() {
+			power.SetTitle("Stop proxy")
+		} else {
+			power.SetTitle("Start proxy")
+		}
+		setState(stateFor(proxyFail, stopped, warn))
 	}
 	refresh()
 
@@ -153,9 +175,20 @@ func onReady(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
 			select {
 			case <-ticker.C:
 				refresh()
-			case err := <-proxyErr:
+			case err := <-runner.Failed():
 				fmt.Fprintln(os.Stderr, "error:", err)
 				proxyFail = err
+				refresh()
+			case <-power.ClickedCh:
+				if runner.Running() {
+					runner.Stop()
+					stopped, proxyFail = true, nil
+				} else {
+					stopped = false
+					if proxyFail = runner.Start(); proxyFail != nil {
+						fmt.Fprintln(os.Stderr, "error:", proxyFail)
+					}
+				}
 				refresh()
 			case <-copyEP.ClickedCh:
 				_ = clipboardCopy(fmt.Sprintf("http://%s/v1", cfg.Listen))
