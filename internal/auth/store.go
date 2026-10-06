@@ -45,11 +45,15 @@ func (c Credentials) GrantExpired() bool {
 	return time.Now().After(time.UnixMilli(c.GrantExpiresAt))
 }
 
-// Store is the on-disk credential set, one entry per provider id.
+// Store is the on-disk credential set, one entry per provider id. The file is
+// shared with other Patchbay processes (`patchbay login` in a terminal while
+// the menu-bar app serves), so every operation first picks up changes made on
+// disk, and writes merge into the latest contents instead of replacing them.
 type Store struct {
 	mu    sync.Mutex
 	path  string
 	items map[string]Credentials
+	seen  os.FileInfo // the file as last read or written; nil if absent
 }
 
 // OpenStore loads ~/.patchbay/credentials.json (empty if absent).
@@ -62,23 +66,45 @@ func OpenStore() (*Store, error) {
 		return nil, err
 	}
 	s := &Store{path: filepath.Join(d, "credentials.json"), items: map[string]Credentials{}}
-	data, err := os.ReadFile(s.path)
-	if errors.Is(err, os.ErrNotExist) {
-		return s, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(data, &s.items); err != nil {
+	if err := s.reloadLocked(); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
-// Get returns the credentials for a provider id.
+// reloadLocked re-reads the file if it changed since this store last saw it.
+func (s *Store) reloadLocked() error {
+	fi, err := os.Stat(s.path)
+	if errors.Is(err, os.ErrNotExist) {
+		if s.seen != nil { // removed by another process
+			s.items, s.seen = map[string]Credentials{}, nil
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if s.seen != nil && fi.ModTime().Equal(s.seen.ModTime()) && fi.Size() == s.seen.Size() {
+		return nil
+	}
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		return err
+	}
+	items := map[string]Credentials{}
+	if err := json.Unmarshal(data, &items); err != nil {
+		return err
+	}
+	s.items, s.seen = items, fi
+	return nil
+}
+
+// Get returns the credentials for a provider id. If the file can't be re-read
+// (say, mid-write by another process) the last good copy is used.
 func (s *Store) Get(id string) (Credentials, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	_ = s.reloadLocked()
 	c, ok := s.items[id]
 	return c, ok
 }
@@ -87,14 +113,38 @@ func (s *Store) Get(id string) (Credentials, bool) {
 func (s *Store) Set(id string, c Credentials) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.reloadLocked(); err != nil {
+		return err
+	}
 	s.items[id] = c
 	return s.saveLocked()
+}
+
+// CompareAndSet stores next only if the provider's credentials are still old
+// (same access and refresh token). Otherwise, say a login replaced them while
+// old was being refreshed, it leaves them alone. It returns what is stored
+// afterwards (zero if nothing) and whether next was written.
+func (s *Store) CompareAndSet(id string, old, next Credentials) (Credentials, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.reloadLocked(); err != nil {
+		return Credentials{}, false, err
+	}
+	cur, ok := s.items[id]
+	if !ok || cur.Access != old.Access || cur.Refresh != old.Refresh {
+		return cur, false, nil
+	}
+	s.items[id] = next
+	return next, true, s.saveLocked()
 }
 
 // Delete removes a provider's credentials.
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.reloadLocked(); err != nil {
+		return err
+	}
 	delete(s.items, id)
 	return s.saveLocked()
 }
@@ -103,6 +153,7 @@ func (s *Store) Delete(id string) error {
 func (s *Store) IDs() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	_ = s.reloadLocked()
 	ids := make([]string, 0, len(s.items))
 	for id := range s.items {
 		ids = append(ids, id)
@@ -119,5 +170,13 @@ func (s *Store) saveLocked() error {
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	if err := os.Rename(tmp, s.path); err != nil {
+		return err
+	}
+	fi, err := os.Stat(s.path)
+	if err != nil {
+		return err
+	}
+	s.seen = fi
+	return nil
 }
