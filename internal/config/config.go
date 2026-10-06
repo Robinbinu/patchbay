@@ -49,6 +49,9 @@ type Config struct {
 	Listen      string     `json:"listen"`
 	LocalAPIKey string     `json:"local_api_key"`
 	Providers   []Provider `json:"providers"`
+	// Seeded lists the default provider IDs this config has been offered, so
+	// one the user removed is not added back on the next load.
+	Seeded []string `json:"seeded,omitempty"`
 
 	mu   sync.Mutex `json:"-"`
 	path string     `json:"-"`
@@ -83,15 +86,23 @@ func newLocalKey() string {
 // Default seeds the two OAuth providers Patchbay ships with. Key-based
 // providers are added by the user via `patchbay provider add`.
 func Default() *Config {
-	return &Config{
+	c := &Config{
 		Listen:      "127.0.0.1:8787",
 		LocalAPIKey: newLocalKey(),
-		Providers: []Provider{
-			{ID: "codex", Kind: KindCodexOAuth, Label: "ChatGPT (Codex)", Enabled: true},
-			{ID: "claude", Kind: KindAnthropicOAuth, Label: "Claude (Pro/Max)", Enabled: true},
-			{ID: "grok", Kind: KindXAIOAuth, Label: "Grok (xAI)", Enabled: true},
-			{ID: "openrouter", Kind: KindOpenRouterOAuth, Label: "OpenRouter", Enabled: true},
-		},
+		Providers:   defaultProviders(),
+	}
+	for _, p := range c.Providers {
+		c.Seeded = append(c.Seeded, p.ID)
+	}
+	return c
+}
+
+func defaultProviders() []Provider {
+	return []Provider{
+		{ID: "codex", Kind: KindCodexOAuth, Label: "ChatGPT (Codex)", Enabled: true},
+		{ID: "claude", Kind: KindAnthropicOAuth, Label: "Claude (Pro/Max)", Enabled: true},
+		{ID: "grok", Kind: KindXAIOAuth, Label: "Grok (xAI)", Enabled: true},
+		{ID: "openrouter", Kind: KindOpenRouterOAuth, Label: "OpenRouter", Enabled: true},
 	}
 }
 
@@ -122,23 +133,31 @@ func Load() (*Config, error) {
 	if c.LocalAPIKey == "" {
 		c.LocalAPIKey = newLocalKey()
 	}
-	// Backfill seeded providers added in newer versions so an existing config
-	// gains them (e.g. grok, openrouter) without losing the user's own entries.
+	// Offer default providers added in newer versions (e.g. grok, openrouter)
+	// without losing the user's own entries or reviving ones they removed.
 	if c.ensureSeeded() {
 		_ = c.Save()
 	}
 	return c, nil
 }
 
-// ensureSeeded adds any default provider missing from the loaded config,
-// matched by ID. Returns whether anything changed.
+// ensureSeeded adds each default provider this config has never been offered
+// and records it in Seeded. Returns whether anything changed.
 func (c *Config) ensureSeeded() bool {
+	offered := map[string]bool{}
+	for _, id := range c.Seeded {
+		offered[id] = true
+	}
 	changed := false
-	for _, def := range Default().Providers {
+	for _, def := range defaultProviders() {
+		if offered[def.ID] {
+			continue
+		}
 		if _, ok := c.Provider(def.ID); !ok {
 			c.Providers = append(c.Providers, def)
-			changed = true
 		}
+		c.Seeded = append(c.Seeded, def.ID)
+		changed = true
 	}
 	return changed
 }
