@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"fyne.io/systray"
@@ -12,10 +13,12 @@ import (
 	"github.com/robin/patchbay/internal/config"
 )
 
-// startTray runs the menu-bar UI on its own goroutine. The proxy keeps serving
-// on the main goroutine; systray.Run owns the OS event loop.
-func startTray(cfg *config.Config, mgr *auth.Manager) {
-	go systray.Run(func() { onReady(cfg, mgr) }, func() {})
+// runUI runs the menu-bar event loop on the main goroutine. On macOS the Cocoa
+// loop systray drives must own the main thread, so the caller runs the HTTP
+// server on a background goroutine and calls this last. systray.Run blocks
+// until the user quits.
+func runUI(cfg *config.Config, mgr *auth.Manager) {
+	systray.Run(func() { onReady(cfg, mgr) }, func() { os.Exit(0) })
 }
 
 func onReady(cfg *config.Config, mgr *auth.Manager) {
