@@ -15,7 +15,7 @@ func ids(c *Config) map[string]bool {
 }
 
 func TestRemovedSeededProviderStaysRemoved(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestRemovedSeededProviderStaysRemoved(t *testing.T) {
 // removal after that sticks.
 func TestLegacyConfigBackfillsOnce(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	dir := filepath.Join(home, ".patchbay")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -75,4 +75,12 @@ func TestLegacyConfigBackfillsOnce(t *testing.T) {
 	if len(again.Providers) != 1 {
 		t.Fatalf("providers after removal and reload = %v", ids(again))
 	}
+}
+
+// setHome points the user's home at dir for the test: HOME on macOS and
+// Linux, USERPROFILE on Windows (where os.UserHomeDir ignores HOME).
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }

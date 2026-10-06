@@ -19,7 +19,7 @@ func creds(access, refresh string, valid time.Duration) Credentials {
 // app and a `patchbay login` run in a terminal.
 func openStores(t *testing.T) (*Store, *Store) {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	a, err := OpenStore()
 	if err != nil {
 		t.Fatal(err)
@@ -139,4 +139,12 @@ func TestLogoutDuringRefreshSticks(t *testing.T) {
 	if _, ok := store.Get("claude"); ok {
 		t.Error("refresh re-created credentials the user deleted")
 	}
+}
+
+// setHome points the user's home at dir for the test: HOME on macOS and
+// Linux, USERPROFILE on Windows (where os.UserHomeDir ignores HOME).
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }

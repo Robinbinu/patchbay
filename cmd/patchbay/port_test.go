@@ -22,7 +22,7 @@ func busyAddr(t *testing.T) string {
 }
 
 func TestStartProxyMovesOffBusyPort(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	busy := busyAddr(t)
 	cfg := config.Default()
 	cfg.SetListen(busy)
@@ -53,7 +53,7 @@ func TestStartProxyMovesOffBusyPort(t *testing.T) {
 }
 
 func TestStartProxyRefusesSecondPatchbay(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w, `{"ok":true,"service":"patchbay"}`)
 	}))
@@ -74,7 +74,7 @@ func TestStartProxyRefusesSecondPatchbay(t *testing.T) {
 }
 
 func TestStartProxyFreePortUnchanged(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -104,4 +104,12 @@ func TestParsePort(t *testing.T) {
 	if got := withPort("127.0.0.1:8787", 9000); got != "127.0.0.1:9000" {
 		t.Errorf("withPort = %s", got)
 	}
+}
+
+// setHome points the user's home at dir for the test: HOME on macOS and
+// Linux, USERPROFILE on Windows (where os.UserHomeDir ignores HOME).
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }

@@ -61,7 +61,7 @@ func TestSetRoundTrip(t *testing.T) {
 		t.Skip("writes to the real HKCU Run key")
 	}
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("XDG_CONFIG_HOME", "")
 	if Enabled() {
 		t.Fatal("enabled in a fresh home")
@@ -81,4 +81,12 @@ func TestSetRoundTrip(t *testing.T) {
 	if err := Set(false); err != nil {
 		t.Fatalf("disabling twice: %v", err)
 	}
+}
+
+// setHome points the user's home at dir for the test: HOME on macOS and
+// Linux, USERPROFILE on Windows (where os.UserHomeDir ignores HOME).
+func setHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }
