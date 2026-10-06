@@ -1,121 +1,353 @@
+<div align="center">
+
+<img src="assets/icon.png" width="128" height="128" alt="Patchbay icon">
+
 # Patchbay
 
-One local endpoint for every model you have access to.
+**One local endpoint for every model you have.**
 
-Patchbay is a small, OS-agnostic proxy written in Go. You sign in to your
-providers once, and Patchbay exposes them all behind a single local URL with
-one local API key — speaking both the **OpenAI** and **Anthropic** wire
-formats — so any coding tool that talks to either API can reach any of your
-models. It tracks each sign-in and tells you, in a menu-bar icon, when a login
-is about to expire.
+Sign in to ChatGPT, Claude, Grok and OpenRouter once. Point any OpenAI- or
+Anthropic-compatible tool at `http://127.0.0.1:8787`. Done.
+
+[![Release](https://img.shields.io/github/v/release/Robinbinu/patchbay?include_prereleases&label=release&color=000000)](https://github.com/Robinbinu/patchbay/releases)
+[![CI](https://github.com/Robinbinu/patchbay/actions/workflows/ci.yml/badge.svg)](https://github.com/Robinbinu/patchbay/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/github/go-mod/go-version/Robinbinu/patchbay?color=000000)](go.mod)
+[![License: MIT](https://img.shields.io/badge/license-MIT-000000)](LICENSE)
+![Platforms](https://img.shields.io/badge/macOS%20·%20Windows%20·%20Linux-000000)
+
+[**Download**](#install) · [Quick start](#quick-start) · [Use it with your tools](#use-it-with-your-tools) · [How it works](#how-it-works) · [FAQ](#faq)
+
+</div>
+
+---
+
+You already pay for a ChatGPT plan, a Claude subscription, maybe SuperGrok or an
+OpenRouter account. Every coding tool wants its own API key, its own base URL,
+its own config. **Patchbay** is a small menu-bar app (and CLI) that signs in to
+all of them and hands every tool on your machine **one URL and one key**.
 
 > A patch bay is the panel in a studio that routes many sources to many
 > destinations through one board. Same idea, for models.
 
-## What it does
+## Highlights
 
-- **Unified endpoints**
-  - `POST /v1/chat/completions` — OpenAI chat-completions
-  - `POST /v1/responses` — OpenAI/Codex Responses
-  - `POST /v1/messages` — Anthropic Messages
-  - `GET  /v1/models` — every model from every signed-in provider, in one list
-- **One local API key.** Clients authenticate to Patchbay with a generated
-  `pby-…` key (as a `Bearer` token or `x-api-key`). Your upstream provider
-  credentials never leave the machine.
-- **Model-based routing.** Patchbay builds a model → provider index from each
-  provider's own model list and routes every request to the owner of the
-  requested `model`. `/v1/models` advertises **provider-prefixed** ids
-  (`codex/gpt-5.6-luna`, `grok/grok-4.6`, `openrouter/openai/gpt-5.5`); send a
-  prefixed id to pick a provider explicitly, or a bare id to let Patchbay
-  resolve it. The upstream always sees its own bare model id.
-- **Login status & expiry.** `patchbay status` and the menu bar show each
-  account, its plan, and when the access token and the overall login expire,
-  with a one-click **Log in again** when a login lapses.
-
-## Providers
-
-| Kind | Auth | Surface |
-| --- | --- | --- |
-| `codex-oauth` | ChatGPT Plus/Pro/Team plan, OAuth (PKCE) | Responses |
-| `anthropic-oauth` | Claude Pro/Max, OAuth (PKCE) | Messages |
-| `xai-oauth` | Grok (SuperGrok / X Premium+), OAuth (device-code) | Responses |
-| `openrouter-oauth` | OpenRouter, OAuth (PKCE) → durable key | Chat |
-| `anthropic-key` | Anthropic Console API key | Messages |
-| `openai-key` | OpenAI-compatible API key (OpenAI, OpenRouter, DeepSeek, …) | Chat/Responses |
-
-Seeded providers (`codex`, `claude`, `grok`, `openrouter`) are ready to
-`login`; add more with `patchbay provider add`.
-
-The OAuth flows (authorize URL, PKCE, loopback callback, token exchange,
-refresh, identity, expiry) follow the approach used by
-[oh-my-pi](https://www.npmjs.com/package/@oh-my-pi/pi-ai)'s auth rules. More
-providers can be added behind the same seams.
+- **Use the subscriptions you already have.** Sign in with your ChatGPT
+  Plus/Pro/Team, Claude Pro/Max, SuperGrok / X Premium+ or OpenRouter account
+  through each provider's own OAuth flow. API keys work too.
+- **One endpoint, both dialects.** OpenAI `chat/completions` and `responses`,
+  Anthropic `messages`, and one merged `/v1/models` list.
+- **Model-based routing.** Ask for `claude-…`, `grok-…` or
+  `openrouter/openai/gpt-…` and Patchbay sends it to whoever owns that model.
+- **Lives in your menu bar.** See every account at a glance. The icon tells you
+  when a login is about to expire; one click signs you back in.
+- **Local and private.** Listens on `127.0.0.1` only. Your provider tokens stay
+  in `~/.patchbay` (mode `0600`); tools only ever see a local `pby-…` key.
+  No telemetry, no cloud relay.
+- **Tiny and dependency-free.** A single Go binary. The core proxy uses only
+  the standard library.
 
 ## Install
 
-Requires Go 1.27+.
+> **Beta.** This is the first public beta. Expect rough edges and please
+> [report them](https://github.com/Robinbinu/patchbay/issues/new/choose).
+
+Grab the latest build from [**Releases**](https://github.com/Robinbinu/patchbay/releases).
+
+| Platform | Download | What you get |
+| --- | --- | --- |
+| **macOS** 12+ (Apple silicon & Intel) | `Patchbay-<version>-macOS.dmg` | Menu-bar app |
+| **Windows** 10/11 x64 | `Patchbay-<version>-windows-x64.zip` | Tray app + CLI |
+| **Windows** on ARM | `Patchbay-<version>-windows-arm64.zip` | Tray app + CLI |
+| **Linux** x64 / arm64 | `patchbay_<version>_linux_<arch>.tar.gz` | CLI (+ tray) |
+| macOS CLI only | `patchbay_<version>_darwin_universal.tar.gz` | CLI (+ menu bar) |
+
+Every release includes a `checksums.txt` (SHA-256).
+
+<details>
+<summary><b>macOS</b>: first launch</summary>
+
+1. Open the `.dmg` and drag **Patchbay** to **Applications**.
+2. Beta builds are not notarized yet, so the first time, **right-click
+   Patchbay → Open → Open**. (Or run
+   `xattr -dr com.apple.quarantine /Applications/Patchbay.app`.)
+3. Patchbay appears in the menu bar (there is no Dock icon).
+
+Want the CLI too? The app binary is the CLI:
 
 ```bash
-# Core proxy + CLI (standard library only)
-go build -o patchbay ./cmd/patchbay
-
-# With the macOS/Windows/Linux menu-bar UI
-go build -tags tray -o patchbay ./cmd/patchbay
+sudo ln -sf /Applications/Patchbay.app/Contents/MacOS/Patchbay /usr/local/bin/patchbay
 ```
 
-## Use
+</details>
+
+<details>
+<summary><b>Windows</b>: first launch</summary>
+
+1. Unzip anywhere (e.g. `%LOCALAPPDATA%\Patchbay`).
+2. Run **Patchbay.exe**. Beta builds are not code-signed yet, so SmartScreen may
+   warn: click **More info → Run anyway**.
+3. Patchbay appears in the notification area (click `^` if hidden).
+
+The command-line tool is `cli\patchbay.exe`. Add that folder to your `PATH`.
+
+</details>
+
+<details>
+<summary><b>Linux</b></summary>
+
+```bash
+tar -xzf patchbay_*_linux_amd64.tar.gz
+sudo install patchbay_*_linux_amd64/patchbay /usr/local/bin/
+```
+
+`patchbay serve` shows a tray icon on desktops with StatusNotifier /
+AppIndicator support (KDE, GNOME with the AppIndicator extension, …), and runs
+headless everywhere else.
+
+</details>
+
+<details>
+<summary><b>From source</b> (Go 1.27+)</summary>
+
+```bash
+# Headless proxy + CLI (standard library only)
+go install github.com/Robinbinu/patchbay/cmd/patchbay@latest
+
+# With the menu-bar / tray UI
+go install -tags tray github.com/Robinbinu/patchbay/cmd/patchbay@latest
+```
+
+Building the release packages (`.dmg`, Windows zips, archives) on a Mac:
+`scripts/build-release.sh v0.1.0-beta.1`.
+
+</details>
+
+## Quick start
+
+### With the app
+
+1. Launch **Patchbay**. The proxy starts on `http://127.0.0.1:8787`.
+2. Menu bar → pick a provider (ChatGPT, Claude, Grok, OpenRouter) → **Log in…**
+   Your browser opens; approve, and you're signed in.
+3. Menu bar → **Endpoint → Copy local API key**, and paste it into your tool
+   along with the base URL.
+
+### With the CLI
 
 ```bash
 # 1. Sign in to the providers you want
-patchbay login codex      # opens the browser (ChatGPT plan)
-patchbay login claude     # opens the browser (Claude Pro/Max)
-patchbay login grok       # device code: open the URL, enter the code
-patchbay login openrouter # opens the browser; mints a durable key
+patchbay login codex        # ChatGPT plan: opens the browser
+patchbay login claude       # Claude Pro/Max: opens the browser
+patchbay login grok         # SuperGrok / X Premium+: device code
+patchbay login openrouter   # opens the browser, mints a durable key
 
-# 2. (optional) Add an API-key provider
+# 2. (optional) Add API-key providers
 patchbay provider add openai openai-key
 patchbay provider key openai sk-...
-patchbay provider add anthropic anthropic-key
-patchbay provider key anthropic sk-ant-...
+patchbay provider add deepseek openai-key https://api.deepseek.com/v1
+patchbay provider key deepseek sk-...
 
-# 3. Check sign-in / expiry
+# 3. Check who you're signed in as and when it expires
 patchbay status
 
 # 4. Run it
 patchbay serve
 ```
 
-Point any tool at it:
+Example output:
+
+```text
+PROVIDER    KIND              STATE  ACCOUNT            ACCESS EXPIRES  LOGIN EXPIRES
+codex       codex-oauth       ok     you@example.com    in 9d           in 59d
+claude      anthropic-oauth   ok     you@example.com    in 7h           in 29d
+grok        xai-oauth         ok     you@example.com    in 5h           -
+openrouter  openrouter-oauth  ok     -                  -               -
+```
+
+## Use it with your tools
+
+Every tool needs the same two things: the **base URL** and the **local key**
+(`patchbay key`, or **Copy local API key** in the menu).
+
+| Speaks… | Base URL |
+| --- | --- |
+| OpenAI API | `http://127.0.0.1:8787/v1` |
+| Anthropic API | `http://127.0.0.1:8787` |
+
+**Anthropic-compatible tools** (Claude Code, etc.):
 
 ```bash
-# OpenAI-compatible client
-export OPENAI_BASE_URL=http://127.0.0.1:8787/v1
-export OPENAI_API_KEY=$(patchbay key)
-
-# Anthropic-compatible client
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 export ANTHROPIC_API_KEY=$(patchbay key)
 ```
 
-`patchbay key rotate` issues a new local key; `patchbay logout <id>` forgets a
-provider's tokens.
+**OpenAI-compatible tools** (SDKs, Aider, Continue, Cline, and anything with a
+"custom OpenAI base URL" field):
 
-## Where state lives
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8787/v1
+export OPENAI_API_KEY=$(patchbay key)
+```
 
-Everything is under `~/.patchbay`, created `0700`:
+**See every model you can reach:**
 
-- `config.json` — listen address, local API key, provider list (`0600`)
-- `credentials.json` — OAuth tokens and expiry per provider (`0600`)
+```bash
+curl -s http://127.0.0.1:8787/v1/models \
+  -H "Authorization: Bearer $(patchbay key)" | jq -r '.data[] | "\(.id)\t\(.surface)"'
+```
 
-Nothing is sent anywhere except the provider you are calling.
+**Call one:**
 
-## Status and limits
+```bash
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "Authorization: Bearer $(patchbay key)" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "openrouter/openai/gpt-5.5", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
 
-This is an early build. Request bodies are forwarded to each provider's native
-surface as-is; cross-format translation (e.g. an OpenAI chat-completions body
-to an Anthropic Messages body) is not done yet — send a provider the format its
-surface expects, or use `/v1/models` to see which surface a model is on.
+```python
+from openai import OpenAI
+import subprocess
+
+client = OpenAI(
+    base_url="http://127.0.0.1:8787/v1",
+    api_key=subprocess.check_output(["patchbay", "key"], text=True).strip(),
+)
+print(client.chat.completions.create(
+    model="openrouter/openai/gpt-5.5",
+    messages=[{"role": "user", "content": "Hello!"}],
+).choices[0].message.content)
+```
+
+> **Match the format to the model (beta limitation).** Patchbay forwards your
+> request body as-is; it does not translate between API formats yet. Each model
+> in `/v1/models` lists its `surface`. Send `messages` models to
+> `/v1/messages`, `responses` models to `/v1/responses`, and `chat` models to
+> `/v1/chat/completions`.
+
+## Providers
+
+| Provider | Kind | Sign-in | Surface |
+| --- | --- | --- | --- |
+| ChatGPT Plus / Pro / Team (Codex) | `codex-oauth` | OAuth (browser) | `responses` |
+| Claude Pro / Max | `anthropic-oauth` | OAuth (browser) | `messages` |
+| Grok (SuperGrok / X Premium+) | `xai-oauth` | OAuth (device code) | `responses` |
+| OpenRouter | `openrouter-oauth` | OAuth (browser) → durable key | `chat` |
+| Anthropic Console | `anthropic-key` | API key | `messages` |
+| Any OpenAI-compatible API (OpenAI, DeepSeek, Together, Groq, local servers, …) | `openai-key` | API key + optional base URL | `chat` / `responses` |
+
+`codex`, `claude`, `grok` and `openrouter` are configured out of the box: just
+log in. Add more with `patchbay provider add <id> <kind> [base_url]`.
+
+The OAuth flows (PKCE, loopback callback, device code, token refresh, identity
+and expiry) follow the approach used by
+[oh-my-pi](https://www.npmjs.com/package/@oh-my-pi/pi-ai)'s auth rules.
+
+## How it works
+
+```mermaid
+flowchart LR
+    subgraph tools["Your tools"]
+        A["Claude Code"]
+        B["OpenAI SDK / Aider / Cline"]
+        C["curl, scripts, …"]
+    end
+    subgraph pb["Patchbay · 127.0.0.1:8787"]
+        K{{"local key check"}}
+        R["model → provider router"]
+    end
+    subgraph up["Your accounts"]
+        O["ChatGPT (Codex)"]
+        CL["Claude Pro/Max"]
+        G["Grok"]
+        OR["OpenRouter"]
+        X["API-key providers"]
+    end
+    A & B & C -->|"pby-… key"| K --> R
+    R -->|"OAuth token"| O & CL & G & OR
+    R -->|"API key"| X
+```
+
+1. Your tool calls Patchbay with the local `pby-…` key.
+2. Patchbay reads the `model` field and looks it up in an index built from every
+   signed-in provider's own model list. A prefixed id (`grok/grok-4.6`) picks
+   the provider explicitly; a bare id is resolved automatically.
+3. The request goes to that provider with **its** credentials (refreshed
+   automatically when needed) and the provider's bare model id. The response,
+   including SSE streams, is passed straight back.
+
+### Endpoints
+
+| Method | Path | Format |
+| --- | --- | --- |
+| `GET` | `/v1/models` | OpenAI-style list of every model, with `provider` and `surface` |
+| `POST` | `/v1/chat/completions` | OpenAI Chat Completions |
+| `POST` | `/v1/responses` | OpenAI / Codex Responses |
+| `POST` | `/v1/messages` | Anthropic Messages |
+| `GET` | `/healthz` | Liveness, no key required |
+
+Clients authenticate with the local key as `Authorization: Bearer pby-…` or
+`x-api-key: pby-…`.
+
+## CLI reference
+
+```text
+patchbay serve                         Start the proxy (and menu bar, in tray builds)
+patchbay login <id>                    Sign in to an OAuth provider
+patchbay logout <id>                   Forget a provider's credentials
+patchbay status                        Every provider's sign-in state and expiry
+patchbay provider add <id> <kind> [base_url]
+patchbay provider key <id> <api-key>
+patchbay provider rm <id>
+patchbay key [rotate]                  Print (or rotate) the local API key
+patchbay version                       Print the version
+```
+
+## Privacy & security
+
+- Patchbay binds to `127.0.0.1` and refuses requests without the local key.
+- State lives in `~/.patchbay` (`0700`):
+  - `config.json`: listen address, local key, providers (`0600`)
+  - `credentials.json`: OAuth tokens and expiry (`0600`)
+- Patchbay only talks to the providers you configure: to list their models and
+  to forward your requests. No telemetry, no third-party relay.
+- Rotate the local key any time with `patchbay key rotate`.
+
+Found a vulnerability? See [SECURITY.md](SECURITY.md).
+
+## FAQ
+
+**Is this allowed by my provider's terms?**
+Patchbay signs in with each provider's own OAuth flow and sends your requests
+under your account, much like their official CLIs do. You are responsible for
+using your subscriptions within each provider's terms.
+
+**Port 8787 is taken.**
+Change `listen` in `~/.patchbay/config.json` (e.g. `"127.0.0.1:8788"`) and
+restart Patchbay.
+
+**The menu-bar app and `patchbay serve` at the same time?**
+Run one. They share the same config and port, so the second one can't listen.
+
+**A login expired.**
+The menu-bar icon shows a badge. Open the provider's submenu and click
+**Log in…**, or run `patchbay login <id>`.
+
+## Roadmap
+
+- [ ] Cross-format translation (call any model through any endpoint)
+- [ ] More providers: Z.AI, Kimi Code, Gemini, GitHub Copilot
+- [ ] Notarized macOS and signed Windows builds
+- [ ] Launch at login
+- [ ] Homebrew / Scoop / winget packages
+
+Ideas and votes welcome in [Issues](https://github.com/Robinbinu/patchbay/issues).
+
+## Contributing
+
+Bug reports, provider requests and PRs are all welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE)
