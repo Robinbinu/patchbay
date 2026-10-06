@@ -22,7 +22,9 @@ func runUI(cfg *config.Config, mgr *auth.Manager) {
 }
 
 func onReady(cfg *config.Config, mgr *auth.Manager) {
-	systray.SetTitle("⌁")
+	icon := trayIconPNG()
+	systray.SetTemplateIcon(icon, icon)
+	systray.SetTitle("")
 	systray.SetTooltip("Patchbay — model proxy")
 
 	endpoint := systray.AddMenuItem(fmt.Sprintf("Endpoint: http://%s/v1", cfg.Listen), "OpenAI-compatible base URL")
@@ -71,10 +73,12 @@ func onReady(cfg *config.Config, mgr *auth.Manager) {
 				warn = true
 			}
 		}
+		// Icon stays constant; a warning badge appears beside it as text when
+		// any provider needs attention.
 		if warn {
-			systray.SetTitle("⚠")
+			systray.SetTitle(" ⚠")
 		} else {
-			systray.SetTitle("⌁")
+			systray.SetTitle("")
 		}
 	}
 	refresh()
