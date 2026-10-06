@@ -8,3 +8,10 @@
 .patchbay/
 credentials.json
 config.json
+
+# Go caches and stray copies left in the tree by sandboxed builds
+/gocache/
+/gopath/
+/Library/
+/pb/
+.DS_Store
