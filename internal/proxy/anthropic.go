@@ -204,21 +204,6 @@ func anthropicBody(body []byte, accountUUID string) []byte {
 		}
 	}
 
-	if hasThinkingEnabled(req) {
-		extraBody, _ := req["extra_body"].(map[string]any)
-		if extraBody == nil {
-			extraBody = map[string]any{}
-			req["extra_body"] = extraBody
-		}
-		if _, ok := extraBody["context_management"]; !ok {
-			extraBody["context_management"] = map[string]any{
-				"edits": []map[string]any{
-					{"type": "clear_thinking_20251015", "keep": "all"},
-				},
-			}
-		}
-	}
-
 	out, err := json.Marshal(req)
 	if err != nil {
 		return body
@@ -285,15 +270,6 @@ func prependUserReminder(messages []any, texts []string) {
 		messages[i] = msg
 		return
 	}
-}
-
-func hasThinkingEnabled(req map[string]any) bool {
-	thinking, ok := req["thinking"].(map[string]any)
-	if !ok {
-		return false
-	}
-	typ, _ := thinking["type"].(string)
-	return typ == "enabled" || typ == "adaptive"
 }
 
 func anthropicHeaders() map[string]string {
