@@ -11,8 +11,8 @@ import (
 
 	"fyne.io/systray"
 
-	"github.com/robin/patchbay/internal/auth"
-	"github.com/robin/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/auth"
+	"github.com/Robinbinu/patchbay/internal/config"
 )
 
 // runUI runs the menu-bar event loop on the main goroutine. On macOS the Cocoa

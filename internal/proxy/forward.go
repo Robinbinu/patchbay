@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robin/patchbay/internal/config"
-	"github.com/robin/patchbay/internal/providers"
+	"github.com/Robinbinu/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/providers"
 )
 
 // forward sends the (already-read) request body to the upstream that owns the

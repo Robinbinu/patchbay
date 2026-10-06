@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/robin/patchbay/internal/config"
-	"github.com/robin/patchbay/internal/providers"
+	"github.com/Robinbinu/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/providers"
 )
 
 // Provider favicons for the menu, 32px so they stay sharp at 16pt on Retina.

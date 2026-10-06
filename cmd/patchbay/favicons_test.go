@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/robin/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/config"
 )
 
 func TestFaviconFor(t *testing.T) {
