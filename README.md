@@ -40,7 +40,7 @@ all of them and hands every tool on your machine **one URL and one key**.
   `openrouter/openai/gpt-…` and Patchbay sends it to whoever owns that model.
 - **Lives in your menu bar.** See every account at a glance. The icon tells you
   when a login is about to expire; one click signs you back in. Tick
-  **Launch at login** and it's always there, and it tells you when a new
+  **Launch at Login** and it's always there, and it tells you when a new
   version is out.
 - **Local and private.** Listens on `127.0.0.1` only. Your provider tokens stay
   in `~/.patchbay` (mode `0600`); tools only ever see a local `pby-…` key.
@@ -129,11 +129,12 @@ Building the release packages (`.dmg`, Windows zips, archives) on a Mac:
 ### With the app
 
 1. Launch **Patchbay**. The proxy starts on `http://127.0.0.1:8787`.
-2. Menu bar → pick a provider (ChatGPT, Claude, Grok, OpenRouter) → **Log in…**
+2. Menu bar → pick a provider (ChatGPT, Claude, Grok, OpenRouter) → **Log In…**
+   A checkmark means it's signed in and ready.
    Your browser opens; approve, and you're signed in.
-3. Menu bar → **Endpoint → Copy local API key**, and paste it into your tool
-   along with the base URL.
-4. Optional: tick **Launch at login** so Patchbay starts with your computer.
+3. Menu bar → **Connect a Tool** → copy the base URL and the API key into your
+   tool.
+4. Optional: tick **Launch at Login** so Patchbay starts with your computer.
 
 ### With the CLI
 
@@ -170,7 +171,7 @@ openrouter  openrouter-oauth  ok     -                  -               -
 ## Use it with your tools
 
 Every tool needs the same two things: the **base URL** and the **local key**
-(`patchbay key`, or **Copy local API key** in the menu).
+(`patchbay key`, or **Connect a Tool → Copy API Key** in the menu).
 
 | Speaks… | Base URL |
 | --- | --- |
@@ -227,6 +228,11 @@ print(client.chat.completions.create(
 > in `/v1/models` lists its `surface`. Send `messages` models to
 > `/v1/messages`, `responses` models to `/v1/responses`, and `chat` models to
 > `/v1/chat/completions`.
+>
+> In practice: Anthropic-compatible tools only see (and can use) the
+> `messages` models. OpenAI-compatible tools see every model, but through
+> Chat Completions only the `chat` ones (OpenRouter, API-key providers) work.
+> ChatGPT/Codex and Grok models need a tool that speaks the Responses API.
 
 ## Providers
 
@@ -283,7 +289,7 @@ flowchart LR
 
 | Method | Path | Format |
 | --- | --- | --- |
-| `GET` | `/v1/models` | OpenAI-style list of every model, with `provider` and `surface` |
+| `GET` | `/v1/models` | Every model, sorted. OpenAI format with `surface` by default; Anthropic format (only `messages` models) when the client sends `anthropic-version` |
 | `POST` | `/v1/chat/completions` | OpenAI Chat Completions |
 | `POST` | `/v1/responses` | OpenAI / Codex Responses |
 | `POST` | `/v1/messages` | Anthropic Messages |
@@ -337,13 +343,13 @@ restart Patchbay.
 Run one. They share the same config and port, so the second one can't listen.
 
 **How do I update?**
-The menu shows **Update available: vX — Download** when a new release is out
-(or use **Check for updates…**). It opens the release page; download and
+The menu shows **Update Available: vX — Download** when a new release is out
+(or use **Check for Updates…**). It opens the release page; download and
 replace the app.
 
 **A login expired.**
 The menu-bar icon shows a badge. Open the provider's submenu and click
-**Log in…**, or run `patchbay login <id>`.
+**Log In…**, or run `patchbay login <id>`.
 
 ## Roadmap
 

@@ -80,18 +80,17 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 		}
 	}
 
-	// ---- header: endpoint + key -------------------------------------------
-	header := systray.AddMenuItem("Patchbay", "")
+	// ---- header: status + how to connect ----------------------------------
+	header := systray.AddMenuItem("Patchbay "+version, "")
 	header.Disable()
-	down := systray.AddMenuItem("", "Patchbay could not serve on its address")
-	down.Disable()
-	down.Hide()
-	ep := systray.AddMenuItem(fmt.Sprintf("Endpoint  http://%s", cfg.Listen), "OpenAI base is /v1; Anthropic base is the root")
-	copyEP := ep.AddSubMenuItem("Copy OpenAI base URL", "")
-	copyKey := ep.AddSubMenuItem("Copy local API key", "")
-	rotate := ep.AddSubMenuItem("Rotate local API key", "Issue a new key; existing clients must update")
-	power := systray.AddMenuItem("Stop proxy", "Stop or start serving; the menu bar stays")
-	atLogin := systray.AddMenuItemCheckbox("Launch at login", "Start Patchbay when you log in", autostart.Enabled())
+	status := systray.AddMenuItem("", "")
+	status.Disable()
+	connect := systray.AddMenuItem("Connect a Tool", "Base URLs and the local API key for your tools")
+	copyOpenAI := connect.AddSubMenuItem(fmt.Sprintf("Copy OpenAI Base URL  (http://%s/v1)", cfg.Listen), "")
+	copyAnthropic := connect.AddSubMenuItem(fmt.Sprintf("Copy Anthropic Base URL  (http://%s)", cfg.Listen), "")
+	copyKey := connect.AddSubMenuItem("Copy API Key", "The local pby-… key every tool uses")
+	rotate := connect.AddSubMenuItem("Rotate API Key", "Issue a new key; existing tools must update")
+	power := systray.AddMenuItem("Stop Proxy", "Stop or start serving; the menu bar stays")
 	systray.AddSeparator()
 
 	// ---- providers ---------------------------------------------------------
@@ -113,8 +112,8 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 		pm.account.Disable()
 		pm.expiry = pm.parent.AddSubMenuItem("", "")
 		pm.expiry.Disable()
-		pm.login = pm.parent.AddSubMenuItem("Log in…", "Run the sign-in flow")
-		pm.logout = pm.parent.AddSubMenuItem("Log out", "Forget stored credentials")
+		pm.login = pm.parent.AddSubMenuItem("Log In…", "Run the sign-in flow")
+		pm.logout = pm.parent.AddSubMenuItem("Log Out", "Forget stored credentials")
 		menus[p.ID] = pm
 
 		prov := p
@@ -136,8 +135,10 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 	}
 
 	systray.AddSeparator()
-	checkUpdate := systray.AddMenuItem("Check for updates…", "Look for a newer release on GitHub")
-	about := systray.AddMenuItem("Patchbay "+version+" on GitHub", repoURL)
+	atLogin := systray.AddMenuItemCheckbox("Launch at Login", "Start Patchbay when you log in", autostart.Enabled())
+	checkUpdate := systray.AddMenuItem("Check for Updates…", "Look for a newer release on GitHub")
+	systray.AddSeparator()
+	about := systray.AddMenuItem("View on GitHub", repoURL)
 	author := systray.AddMenuItem("Made by Robinbinu", authorURL)
 	linkedin := systray.AddMenuItem("Connect on LinkedIn", linkedinURL)
 	systray.AddSeparator()
@@ -155,7 +156,7 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 			if pm == nil {
 				continue
 			}
-			state, account, expiry, badge, needLogin := describe(s)
+			state, account, expiry, action, needLogin := describe(s)
 			pm.status.SetTitle("Status: " + state)
 			if account == "" {
 				pm.account.Hide()
@@ -169,7 +170,12 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 				pm.expiry.SetTitle(expiry)
 				pm.expiry.Show()
 			}
-			pm.parent.SetTitle(s.Label + badge)
+			pm.parent.SetTitle(s.Label + action)
+			if action == "" {
+				pm.parent.Check() // signed in and usable
+			} else {
+				pm.parent.Uncheck()
+			}
 			// Key providers don't log in interactively; hide the action.
 			if config.OAuthKind(s.Kind) {
 				pm.login.Show()
@@ -184,18 +190,16 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 		}
 		switch {
 		case stopped:
-			down.SetTitle("Proxy is off")
-			down.Show()
+			status.SetTitle("Proxy is off")
 		case proxyFail != nil:
-			down.SetTitle("Proxy stopped: " + proxyFail.Error())
-			down.Show()
+			status.SetTitle("Proxy stopped: " + proxyFail.Error())
 		default:
-			down.Hide()
+			status.SetTitle("Running on " + cfg.Listen)
 		}
 		if runner.Running() {
-			power.SetTitle("Stop proxy")
+			power.SetTitle("Stop Proxy")
 		} else {
-			power.SetTitle("Start proxy")
+			power.SetTitle("Start Proxy")
 		}
 		setState(stateFor(proxyFail, stopped, warn))
 	}
@@ -210,7 +214,7 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 		}
 		checking = true
 		if manual {
-			checkUpdate.SetTitle("Checking for updates…")
+			checkUpdate.SetTitle("Checking for Updates…")
 		}
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -241,7 +245,7 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 				case available != nil:
 					_ = auth.OpenBrowser(available.URL)
 				case devBuild:
-					checkUpdate.SetTitle("Development build: see all releases")
+					checkUpdate.SetTitle("Development Build: See All Releases")
 					_ = auth.OpenBrowser(releasesURL)
 				default:
 					startCheck(true)
@@ -251,12 +255,12 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 				switch {
 				case res.newer:
 					available = &res.release
-					checkUpdate.SetTitle("Update available: " + res.release.Tag + " — Download")
+					checkUpdate.SetTitle("Update Available: " + res.release.Tag + " — Download")
 				case !res.manual:
 					// Background checks stay quiet unless there is something new.
 				case res.err != nil:
 					fmt.Fprintln(os.Stderr, "error: update check:", res.err)
-					checkUpdate.SetTitle("Update check failed — try again")
+					checkUpdate.SetTitle("Update Check Failed — Try Again")
 				default:
 					checkUpdate.SetTitle("Patchbay is up to date (" + version + ")")
 				}
@@ -275,8 +279,10 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 					}
 				}
 				refresh()
-			case <-copyEP.ClickedCh:
+			case <-copyOpenAI.ClickedCh:
 				_ = clipboardCopy(fmt.Sprintf("http://%s/v1", cfg.Listen))
+			case <-copyAnthropic.ClickedCh:
+				_ = clipboardCopy(fmt.Sprintf("http://%s", cfg.Listen))
 			case <-copyKey.ClickedCh:
 				_ = clipboardCopy(cfg.LocalAPIKey)
 			case <-rotate.ClickedCh:
@@ -285,9 +291,9 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 			case <-atLogin.ClickedCh:
 				if err := autostart.Set(!atLogin.Checked()); err != nil {
 					fmt.Fprintln(os.Stderr, "error: launch at login:", err)
-					atLogin.SetTitle("Launch at login (" + err.Error() + ")")
+					atLogin.SetTitle("Launch at Login (" + err.Error() + ")")
 				} else {
-					atLogin.SetTitle("Launch at login")
+					atLogin.SetTitle("Launch at Login")
 				}
 				if autostart.Enabled() {
 					atLogin.Check()
@@ -311,19 +317,20 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 }
 
 // describe turns a status into display strings: state line, account line,
-// expiry line, a parent-title badge, and whether attention is needed.
-func describe(s auth.Status) (state, account, expiry, badge string, needLogin bool) {
+// expiry line, the action the provider's title asks for ("" when it is ready
+// to use, which the menu shows as a checkmark), and whether to badge the icon.
+func describe(s auth.Status) (state, account, expiry, action string, needLogin bool) {
 	switch {
 	case s.NeedsKey:
-		return "no API key", "", "", "  —", false
+		return "no API key", "", "", "  —  Add API Key", false
 	case !s.SignedIn:
-		return "signed out", "", "", "  ○", true
+		return "signed out", "", "", "  —  Sign In", true
 	case s.GrantExpired:
-		return "login expired — sign in again", acct(s), "", "  ⚠", true
+		return "login expired — sign in again", acct(s), "", "  —  Sign In Again", true
 	case s.Expired:
-		return "token expired (auto-refreshing)", acct(s), expiryLine(s), "  ●", false
+		return "token expired (auto-refreshing)", acct(s), expiryLine(s), "", false
 	default:
-		return "signed in", acct(s), expiryLine(s), "  ●", false
+		return "signed in", acct(s), expiryLine(s), "", false
 	}
 }
 
