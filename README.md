@@ -280,7 +280,10 @@ flowchart LR
 1. Your tool calls Patchbay with the local `pby-…` key.
 2. Patchbay reads the `model` field and looks it up in an index built from every
    signed-in provider's own model list. A prefixed id (`grok/grok-4.6`) picks
-   the provider explicitly; a bare id is resolved automatically.
+   the provider explicitly; a bare id is resolved automatically. An id no
+   provider lists gets a `404` instead of a guess; to send a model a provider
+   doesn't list (say, on a local server), prefix its provider id:
+   `local/my-model`.
 3. The request goes to that provider with **its** credentials (refreshed
    automatically when needed) and the provider's bare model id. The response,
    including SSE streams, is passed straight back.

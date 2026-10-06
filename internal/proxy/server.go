@@ -143,14 +143,10 @@ func (s *Server) handleForward(surface string) http.HandlerFunc {
 		}
 		p, bare, ok := s.providerForModel(r.Context(), model)
 		if !ok {
-			// Fall back to the first enabled provider whose surface matches;
-			// forward the model id unchanged.
-			if fp, fok := s.providerForSurface(surface); fok {
-				p, bare = fp, model
-			} else {
-				writeError(w, http.StatusNotFound, fmt.Sprintf("no provider serves model %q", model))
-				return
-			}
+			writeError(w, http.StatusNotFound, fmt.Sprintf(
+				"unknown model %q: use an id from GET /v1/models, or prefix a provider id "+
+					"(e.g. \"openai/%s\") to send a model that provider doesn't list", model, model))
+			return
 		}
 		if bare != model {
 			body = rewriteModel(body, bare)
@@ -175,22 +171,25 @@ func (s *Server) providerForModel(ctx context.Context, model string) (config.Pro
 		rec, ok = lookup()
 	}
 	if !ok {
-		return config.Provider{}, "", false
+		// An explicit "<provider>/<model>" reaches a model the provider
+		// doesn't list (e.g. a local server without /models). A bare unknown
+		// id is never guessed at: sending it to an arbitrary provider turns a
+		// typo into a confusing upstream error.
+		id, rest, found := strings.Cut(model, "/")
+		if !found || rest == "" {
+			return config.Provider{}, "", false
+		}
+		p, found := s.cfg.Provider(id)
+		if !found || !p.Enabled {
+			return config.Provider{}, "", false
+		}
+		return *p, rest, true
 	}
 	p, found := s.cfg.Provider(rec.Provider)
 	if !found {
 		return config.Provider{}, "", false
 	}
 	return *p, rec.ID, true
-}
-
-func (s *Server) providerForSurface(surface string) (config.Provider, bool) {
-	for _, p := range s.cfg.Providers {
-		if p.Enabled && providers.Surface(p.Kind) == surface {
-			return p, true
-		}
-	}
-	return config.Provider{}, false
 }
 
 // refreshIndex rebuilds the model->provider index (cached 60s) and returns the
