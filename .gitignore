@@ -1,0 +1,10 @@
+# Build output
+/patchbay
+/patchbay-tray
+/dist/
+*.test
+
+# Local state must never be committed (tokens, local API key)
+.patchbay/
+credentials.json
+config.json
