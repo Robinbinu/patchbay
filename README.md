@@ -116,21 +116,6 @@ surface as-is; cross-format translation (e.g. an OpenAI chat-completions body
 to an Anthropic Messages body) is not done yet — send a provider the format its
 surface expects, or use `/v1/models` to see which surface a model is on.
 
-### A note on Claude Pro/Max OAuth
-
-Patchbay implements the Claude OAuth **login, refresh, storage and expiry**.
-When it makes inference requests with a Claude subscription token, it sends the
-token with **honest headers** (`Authorization: Bearer`, `anthropic-version`,
-and the `anthropic-beta: oauth-2025-04-20` flag the token requires). It does
-**not** imitate the Claude Code client — no spoofed client version, no forged
-billing/attestation header, no injected "You are Claude Code" system prompt.
-
-Anthropic's terms (updated Feb 2026, enforced from Apr 2026) restrict using
-Claude **subscription** OAuth tokens outside Claude Code and claude.ai, and
-Anthropic enforces this server-side. Honest requests may therefore be rejected.
-For reliable Claude access, use an **Anthropic Console API key**
-(`anthropic-key`). Codex (ChatGPT plan) OAuth is not restricted this way.
-
 ## License
 
 MIT. See [LICENSE](LICENSE).

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/robin/patchbay/internal/config"
@@ -18,6 +19,12 @@ func (s *Server) forward(w http.ResponseWriter, r *http.Request, p config.Provid
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
+	}
+
+	// Inject billing header and system identity for OAuth-authenticated requests.
+	if p.Kind == config.KindAnthropicOAuth {
+		cred, _ := s.mgr.Store().Get(p.ID)
+		body = anthropicBody(body, cred.AccountID)
 	}
 
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, upstreamURL, bytes.NewReader(body))
@@ -89,8 +96,7 @@ type errBadSurface string
 
 func (e errBadSurface) Error() string { return "unsupported API surface: " + string(e) }
 
-// applyUpstreamAuth sets the provider's credentials and the fingerprint-neutral
-// headers each surface requires.
+// applyUpstreamAuth sets the provider's credentials and the per-surface headers.
 func (s *Server) applyUpstreamAuth(r *http.Request, req *http.Request, p config.Provider) error {
 	switch p.Kind {
 	case config.KindCodexOAuth:
@@ -113,11 +119,19 @@ func (s *Server) applyUpstreamAuth(r *http.Request, req *http.Request, p config.
 		if err != nil {
 			return err
 		}
-		// Honest OAuth request: the bearer token and the oauth beta the token
-		// grant requires. No Claude Code version/billing fingerprint.
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("anthropic-version", providers.AnthropicVersion())
-		req.Header.Set("anthropic-beta", providers.AnthropicOAuthBeta())
+		req.Header.Set("anthropic-beta", strings.Join(ccOAuthBetas, ","))
+
+		for k, v := range anthropicHeaders() {
+			req.Header.Set(k, v)
+		}
+		for k, v := range anthropicQuery() {
+			q := req.URL.Query()
+			q.Set(k, v)
+			req.URL.RawQuery = q.Encode()
+		}
+		return nil
 
 	case config.KindAnthropicKey:
 		req.Header.Set("x-api-key", p.APIKey)
