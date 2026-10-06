@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robin/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/config"
 )
 
 // Credentials is one provider's OAuth grant, stored in ~/.patchbay/credentials.json.

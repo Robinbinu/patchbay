@@ -1,4 +1,4 @@
-module github.com/robin/patchbay
+module github.com/Robinbinu/patchbay
 
 go 1.27
 

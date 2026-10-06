@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robin/patchbay/internal/auth"
-	"github.com/robin/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/auth"
+	"github.com/Robinbinu/patchbay/internal/config"
 )
 
 // API surfaces Patchbay exposes and routes to.
@@ -27,7 +27,7 @@ const (
 const (
 	codexBase          = "https://chatgpt.com/backend-api"
 	codexClientVersion = "0.159.0"
-	codexUserAgent     = "patchbay/0.1 (+https://github.com/robin/patchbay)"
+	codexUserAgent     = "patchbay/0.1 (+https://github.com/Robinbinu/patchbay)"
 	anthropicBase      = "https://api.anthropic.com"
 	openaiBase         = "https://api.openai.com/v1"
 	xaiBase            = "https://api.x.ai/v1"

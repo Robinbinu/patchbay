@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robin/patchbay/internal/proxy"
+	"github.com/Robinbinu/patchbay/internal/proxy"
 )
 
 // proxyRunner starts and stops the HTTP server on demand, so the menu bar can

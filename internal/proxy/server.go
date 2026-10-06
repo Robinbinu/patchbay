@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robin/patchbay/internal/auth"
-	"github.com/robin/patchbay/internal/config"
-	"github.com/robin/patchbay/internal/providers"
+	"github.com/Robinbinu/patchbay/internal/auth"
+	"github.com/Robinbinu/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/providers"
 )
 
 // Server is the HTTP proxy.

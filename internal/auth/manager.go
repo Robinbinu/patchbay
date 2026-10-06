@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robin/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/config"
 )
 
 // Per-provider access-token renewal skew, from the omp rules (Codex skew 0,
