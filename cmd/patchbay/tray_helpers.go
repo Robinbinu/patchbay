@@ -3,13 +3,10 @@
 package main
 
 import (
-	"context"
 	"os/exec"
 	"runtime"
 	"strings"
 )
-
-func contextBackground() context.Context { return context.Background() }
 
 // clipboardCopy best-effort copies text using the platform clipboard tool.
 func clipboardCopy(text string) error {

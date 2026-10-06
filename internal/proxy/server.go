@@ -82,7 +82,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	data := make([]map[string]any, 0, len(models))
 	for _, m := range models {
 		data = append(data, map[string]any{
-			"id":       m.ID,
+			"id":       canonical(m), // provider-prefixed, e.g. "codex/gpt-5.6-luna"
 			"object":   "model",
 			"owned_by": m.Provider,
 			"surface":  m.Surface,
@@ -90,6 +90,9 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
 }
+
+// canonical is the provider-prefixed model id Patchbay advertises.
+func canonical(m providers.Model) string { return m.Provider + "/" + m.ID }
 
 // handleForward returns a handler for one API surface. It reads the body, finds
 // the provider owning the requested model, and forwards.
@@ -105,38 +108,47 @@ func (s *Server) handleForward(surface string) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "request body has no \"model\" field")
 			return
 		}
-		p, ok := s.providerForModel(r.Context(), model)
+		p, bare, ok := s.providerForModel(r.Context(), model)
 		if !ok {
-			// Fall back to the first enabled provider whose surface matches.
+			// Fall back to the first enabled provider whose surface matches;
+			// forward the model id unchanged.
 			if fp, fok := s.providerForSurface(surface); fok {
-				p = fp
+				p, bare = fp, model
 			} else {
 				writeError(w, http.StatusNotFound, fmt.Sprintf("no provider serves model %q", model))
 				return
 			}
 		}
+		if bare != model {
+			body = rewriteModel(body, bare)
+		}
 		s.forward(w, r, p, surface, body)
 	}
 }
 
-func (s *Server) providerForModel(ctx context.Context, model string) (config.Provider, bool) {
-	s.mu.Lock()
-	rec, ok := s.modelsIdx[model]
-	s.mu.Unlock()
+// providerForModel resolves a requested model (provider-prefixed like
+// "codex/gpt-5.6-luna", or a bare id) to its owning provider and the bare
+// upstream model id to send on.
+func (s *Server) providerForModel(ctx context.Context, model string) (config.Provider, string, bool) {
+	lookup := func() (providers.Model, bool) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		rec, ok := s.modelsIdx[model]
+		return rec, ok
+	}
+	rec, ok := lookup()
 	if !ok {
 		s.refreshIndex(ctx)
-		s.mu.Lock()
-		rec, ok = s.modelsIdx[model]
-		s.mu.Unlock()
+		rec, ok = lookup()
 	}
 	if !ok {
-		return config.Provider{}, false
+		return config.Provider{}, "", false
 	}
 	p, found := s.cfg.Provider(rec.Provider)
 	if !found {
-		return config.Provider{}, false
+		return config.Provider{}, "", false
 	}
-	return *p, true
+	return *p, rec.ID, true
 }
 
 func (s *Server) providerForSurface(surface string) (config.Provider, bool) {
@@ -158,8 +170,10 @@ func (s *Server) refreshIndex(ctx context.Context) []providers.Model {
 	all := make([]providers.Model, 0, 64)
 	if fresh {
 		s.mu.Lock()
-		for _, m := range s.modelsIdx {
-			all = append(all, m)
+		for key, m := range s.modelsIdx {
+			if key == canonical(m) { // skip bare-id aliases to avoid duplicates
+				all = append(all, m)
+			}
 		}
 		s.mu.Unlock()
 		return all
@@ -175,7 +189,12 @@ func (s *Server) refreshIndex(ctx context.Context) []providers.Model {
 			continue // a signed-out or failing provider should not blank the list
 		}
 		for _, m := range ms {
-			idx[m.ID] = m
+			// Canonical provider-prefixed id is the primary key; the bare id is
+			// a convenience alias (first provider to claim it wins).
+			idx[canonical(m)] = m
+			if _, taken := idx[m.ID]; !taken {
+				idx[m.ID] = m
+			}
 			all = append(all, m)
 		}
 	}
@@ -194,6 +213,21 @@ func extractModel(body []byte) string {
 	}
 	_ = json.Unmarshal(body, &probe)
 	return probe.Model
+}
+
+// rewriteModel replaces the body's "model" with the bare upstream id, so a
+// client may send a provider-prefixed id while the provider sees its own.
+func rewriteModel(body []byte, model string) []byte {
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		return body
+	}
+	m["model"] = model
+	out, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

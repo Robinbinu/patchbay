@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -21,60 +22,102 @@ func runUI(cfg *config.Config, mgr *auth.Manager) {
 	systray.Run(func() { onReady(cfg, mgr) }, func() { os.Exit(0) })
 }
 
+// providerMenu is the set of items that make up one provider's submenu.
+type providerMenu struct {
+	parent  *systray.MenuItem
+	status  *systray.MenuItem
+	account *systray.MenuItem
+	expiry  *systray.MenuItem
+	login   *systray.MenuItem
+	logout  *systray.MenuItem
+}
+
 func onReady(cfg *config.Config, mgr *auth.Manager) {
 	icon := trayIconPNG()
 	systray.SetTemplateIcon(icon, icon)
 	systray.SetTitle("")
 	systray.SetTooltip("Patchbay — model proxy")
 
-	endpoint := systray.AddMenuItem(fmt.Sprintf("Endpoint: http://%s/v1", cfg.Listen), "OpenAI-compatible base URL")
-	endpoint.Disable()
-	copyKey := systray.AddMenuItem("Copy local API key", "Copy the proxy's local API key")
+	// ---- header: endpoint + key -------------------------------------------
+	header := systray.AddMenuItem("Patchbay", "")
+	header.Disable()
+	ep := systray.AddMenuItem(fmt.Sprintf("Endpoint  http://%s", cfg.Listen), "OpenAI base is /v1; Anthropic base is the root")
+	copyEP := ep.AddSubMenuItem("Copy OpenAI base URL", "")
+	copyKey := ep.AddSubMenuItem("Copy local API key", "")
+	rotate := ep.AddSubMenuItem("Rotate local API key", "Issue a new key; existing clients must update")
 	systray.AddSeparator()
 
-	// One status line per provider, refreshed on a ticker.
-	items := map[string]*systray.MenuItem{}
-	logins := map[string]*systray.MenuItem{}
+	// ---- providers ---------------------------------------------------------
+	accounts := systray.AddMenuItem("Accounts", "")
+	accounts.Disable()
+	menus := map[string]*providerMenu{}
 	for _, p := range cfg.Providers {
-		it := systray.AddMenuItem(p.Label, "")
-		it.Disable()
-		items[p.ID] = it
-		li := systray.AddMenuItem("    Log in again", "Re-run the OAuth sign-in for "+p.Label)
-		li.Hide()
-		logins[p.ID] = li
-		pid := p.ID
-		pp := p
+		pm := &providerMenu{parent: systray.AddMenuItem(p.Label, "")}
+		pm.status = pm.parent.AddSubMenuItem("", "")
+		pm.status.Disable()
+		pm.account = pm.parent.AddSubMenuItem("", "")
+		pm.account.Disable()
+		pm.expiry = pm.parent.AddSubMenuItem("", "")
+		pm.expiry.Disable()
+		pm.login = pm.parent.AddSubMenuItem("Log in…", "Run the sign-in flow")
+		pm.logout = pm.parent.AddSubMenuItem("Log out", "Forget stored credentials")
+		menus[p.ID] = pm
+
+		prov := p
 		go func() {
-			for range li.ClickedCh {
-				_, _ = mgr.Login(contextBackground(), pp)
-				_ = pid
+			for range pm.login.ClickedCh {
+				go func() {
+					_, err := mgr.Login(context.Background(), prov)
+					if err != nil {
+						pm.status.SetTitle("Status: sign-in failed")
+					}
+				}()
+			}
+		}()
+		go func() {
+			for range pm.logout.ClickedCh {
+				_ = mgr.Store().Delete(prov.ID)
 			}
 		}()
 	}
 
 	systray.AddSeparator()
-	quit := systray.AddMenuItem("Quit Patchbay", "Stop the proxy")
+	quit := systray.AddMenuItem("Quit Patchbay", "Stop the proxy and the menu bar")
 
 	refresh := func() {
 		warn := false
 		for _, s := range mgr.Statuses(cfg) {
-			label, needLogin := trayLine(s)
-			if it := items[s.ID]; it != nil {
-				it.SetTitle(label)
+			pm := menus[s.ID]
+			if pm == nil {
+				continue
 			}
-			if li := logins[s.ID]; li != nil {
-				if needLogin {
-					li.Show()
-				} else {
-					li.Hide()
-				}
+			state, account, expiry, badge, needLogin := describe(s)
+			pm.status.SetTitle("Status: " + state)
+			if account == "" {
+				pm.account.Hide()
+			} else {
+				pm.account.SetTitle(account)
+				pm.account.Show()
+			}
+			if expiry == "" {
+				pm.expiry.Hide()
+			} else {
+				pm.expiry.SetTitle(expiry)
+				pm.expiry.Show()
+			}
+			pm.parent.SetTitle(s.Label + badge)
+			// Key providers don't log in interactively; hide the action.
+			if config.OAuthKind(s.Kind) {
+				pm.login.Show()
+				pm.logout.Show()
+			} else {
+				pm.login.Hide()
+				pm.logout.Hide()
 			}
 			if needLogin {
 				warn = true
 			}
 		}
-		// Icon stays constant; a warning badge appears beside it as text when
-		// any provider needs attention.
 		if warn {
 			systray.SetTitle(" ⚠")
 		} else {
@@ -83,14 +126,19 @@ func onReady(cfg *config.Config, mgr *auth.Manager) {
 	}
 	refresh()
 
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(15 * time.Second)
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
 				refresh()
+			case <-copyEP.ClickedCh:
+				_ = clipboardCopy(fmt.Sprintf("http://%s/v1", cfg.Listen))
 			case <-copyKey.ClickedCh:
 				_ = clipboardCopy(cfg.LocalAPIKey)
+			case <-rotate.ClickedCh:
+				cfg.RotateLocalKey()
+				_ = cfg.Save()
 			case <-quit.ClickedCh:
 				ticker.Stop()
 				systray.Quit()
@@ -100,35 +148,53 @@ func onReady(cfg *config.Config, mgr *auth.Manager) {
 	}()
 }
 
-func trayLine(s auth.Status) (label string, needLogin bool) {
+// describe turns a status into display strings: state line, account line,
+// expiry line, a parent-title badge, and whether attention is needed.
+func describe(s auth.Status) (state, account, expiry, badge string, needLogin bool) {
 	switch {
 	case s.NeedsKey:
-		return s.Label + " — no API key", false
+		return "no API key", "", "", "  —", false
 	case !s.SignedIn:
-		return s.Label + " — signed out", true
+		return "signed out", "", "", "  ○", true
 	case s.GrantExpired:
-		return s.Label + " — login expired", true
+		return "login expired — sign in again", acct(s), "", "  ⚠", true
 	case s.Expired:
-		return s.Label + " — token expired (refreshing)", false
+		return "token expired (auto-refreshing)", acct(s), expiryLine(s), "  ●", false
+	default:
+		return "signed in", acct(s), expiryLine(s), "  ●", false
 	}
+}
+
+func acct(s auth.Status) string {
 	who := s.Email
 	if who == "" {
 		who = "signed in"
 	}
-	exp := s.GrantExpiry
-	if exp.IsZero() {
-		exp = s.AccessExpiry
+	if s.Plan != "" {
+		who += "  ·  " + s.Plan
 	}
-	if !exp.IsZero() {
-		d := time.Until(exp)
-		switch {
-		case d <= 0:
-			return s.Label + " — " + who + " (expired)", true
-		case d < 48*time.Hour:
-			return fmt.Sprintf("%s — %s (expires in %dh)", s.Label, who, int(d.Hours())), false
-		default:
-			return fmt.Sprintf("%s — %s (expires in %dd)", s.Label, who, int(d.Hours()/24)), false
-		}
+	return who
+}
+
+func expiryLine(s auth.Status) string {
+	t := s.GrantExpiry
+	label := "Login expires"
+	if t.IsZero() {
+		t = s.AccessExpiry
+		label = "Token expires"
 	}
-	return s.Label + " — " + who, false
+	if t.IsZero() {
+		return "" // durable key: no expiry
+	}
+	d := time.Until(t)
+	switch {
+	case d <= 0:
+		return label + ": expired"
+	case d < time.Hour:
+		return fmt.Sprintf("%s in %dm", label, int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%s in %dh", label, int(d.Hours()))
+	default:
+		return fmt.Sprintf("%s in %dd", label, int(d.Hours()/24))
+	}
 }
