@@ -39,7 +39,8 @@ all of them and hands every tool on your machine **one URL and one key**.
 - **Model-based routing.** Ask for `claude-…`, `grok-…` or
   `openrouter/openai/gpt-…` and Patchbay sends it to whoever owns that model.
 - **Lives in your menu bar.** See every account at a glance. The icon tells you
-  when a login is about to expire; one click signs you back in.
+  when a login is about to expire; one click signs you back in. Tick
+  **Launch at login** and it's always there.
 - **Local and private.** Listens on `127.0.0.1` only. Your provider tokens stay
   in `~/.patchbay` (mode `0600`); tools only ever see a local `pby-…` key.
   No telemetry, no cloud relay.
@@ -131,6 +132,7 @@ Building the release packages (`.dmg`, Windows zips, archives) on a Mac:
    Your browser opens; approve, and you're signed in.
 3. Menu bar → **Endpoint → Copy local API key**, and paste it into your tool
    along with the base URL.
+4. Optional: tick **Launch at login** so Patchbay starts with your computer.
 
 ### With the CLI
 
@@ -338,7 +340,6 @@ The menu-bar icon shows a badge. Open the provider's submenu and click
 - [ ] Cross-format translation (call any model through any endpoint)
 - [ ] More providers: Z.AI, Kimi Code, Gemini, GitHub Copilot
 - [ ] Notarized macOS and signed Windows builds
-- [ ] Launch at login
 - [ ] Homebrew / Scoop / winget packages
 
 Ideas and votes welcome in [Issues](https://github.com/Robinbinu/patchbay/issues).
@@ -347,6 +348,13 @@ Ideas and votes welcome in [Issues](https://github.com/Robinbinu/patchbay/issues
 
 Bug reports, provider requests and PRs are all welcome. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Author
+
+Made by **Robinbinu**: [GitHub](https://github.com/Robinbinu) ·
+[LinkedIn](https://www.linkedin.com/in/michaelrobink)
+
+If Patchbay saves you time, a ⭐ on the repo helps others find it.
 
 ## License
 

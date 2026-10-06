@@ -12,7 +12,15 @@ import (
 	"fyne.io/systray"
 
 	"github.com/Robinbinu/patchbay/internal/auth"
+	"github.com/Robinbinu/patchbay/internal/autostart"
 	"github.com/Robinbinu/patchbay/internal/config"
+)
+
+// Links in the menu's footer.
+const (
+	repoURL     = "https://github.com/Robinbinu/patchbay"
+	authorURL   = "https://github.com/Robinbinu"
+	linkedinURL = "https://www.linkedin.com/in/michaelrobink"
 )
 
 // runUI runs the menu-bar event loop on the main goroutine. On macOS the Cocoa
@@ -69,6 +77,7 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 	copyKey := ep.AddSubMenuItem("Copy local API key", "")
 	rotate := ep.AddSubMenuItem("Rotate local API key", "Issue a new key; existing clients must update")
 	power := systray.AddMenuItem("Stop proxy", "Stop or start serving; the menu bar stays")
+	atLogin := systray.AddMenuItemCheckbox("Launch at login", "Start Patchbay when you log in", autostart.Enabled())
 	systray.AddSeparator()
 
 	// ---- providers ---------------------------------------------------------
@@ -108,6 +117,10 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 		}()
 	}
 
+	systray.AddSeparator()
+	about := systray.AddMenuItem("Patchbay "+version+" on GitHub", repoURL)
+	author := systray.AddMenuItem("Made by Robinbinu", authorURL)
+	linkedin := systray.AddMenuItem("Connect on LinkedIn", linkedinURL)
 	systray.AddSeparator()
 	quit := systray.AddMenuItem("Quit Patchbay", "Stop the proxy and the menu bar")
 
@@ -197,6 +210,24 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 			case <-rotate.ClickedCh:
 				cfg.RotateLocalKey()
 				_ = cfg.Save()
+			case <-atLogin.ClickedCh:
+				if err := autostart.Set(!atLogin.Checked()); err != nil {
+					fmt.Fprintln(os.Stderr, "error: launch at login:", err)
+					atLogin.SetTitle("Launch at login (" + err.Error() + ")")
+				} else {
+					atLogin.SetTitle("Launch at login")
+				}
+				if autostart.Enabled() {
+					atLogin.Check()
+				} else {
+					atLogin.Uncheck()
+				}
+			case <-about.ClickedCh:
+				_ = auth.OpenBrowser(repoURL)
+			case <-author.ClickedCh:
+				_ = auth.OpenBrowser(authorURL)
+			case <-linkedin.ClickedCh:
+				_ = auth.OpenBrowser(linkedinURL)
 			case <-quit.ClickedCh:
 				ticker.Stop()
 				systray.Quit()

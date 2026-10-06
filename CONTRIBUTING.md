@@ -35,6 +35,7 @@ way: new dependencies need a good reason.
 | Path | What lives there |
 | --- | --- |
 | `cmd/patchbay` | CLI entry point, tray UI, icon rendering |
+| `internal/autostart` | Launch at login per OS |
 | `internal/auth` | OAuth flows (PKCE, device code), token store, refresh |
 | `internal/config` | `~/.patchbay/config.json`, provider kinds, local key |
 | `internal/providers` | Upstream base URLs, model lists, surfaces |

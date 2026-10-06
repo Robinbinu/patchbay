@@ -20,6 +20,9 @@ First public beta.
   expiry tracking. API-key providers for Anthropic and any OpenAI-compatible API.
 - Menu-bar / tray app: per-account status and expiry, log in / log out, copy
   endpoint and key, rotate key, stop / start the proxy, status badges.
+- **Launch at login** from the menu (macOS LaunchAgent, Windows Run key,
+  Linux XDG autostart).
+- Links to the project, its author's GitHub and LinkedIn in the menu.
 - macOS universal `Patchbay.app` (in a `.dmg`), Windows tray app with icon and
   version info, Linux and macOS CLI archives.
 - `patchbay version`.
