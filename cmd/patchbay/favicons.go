@@ -11,7 +11,8 @@ import (
 
 // Provider favicons for the menu, 32px so they stay sharp at 16pt on Retina.
 // They are embedded rather than fetched: several providers block non-browser
-// requests for their favicon.
+// requests for their favicon. Each is the provider's mark alone, black on
+// transparent, so macOS can tint it as a template image like the menu-bar icon.
 //
 //go:embed favicons/*.png
 var faviconFS embed.FS

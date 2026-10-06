@@ -39,6 +39,18 @@ func TestEmbeddedFaviconsAre32px(t *testing.T) {
 			t.Errorf("%s favicon is %v, want 32x32 (16pt menu icon @2x)", name, s)
 		}
 	}
+	for _, name := range []string{"openai", "claude", "anthropic", "xai", "openrouter"} {
+		b, _ := faviconFS.ReadFile("favicons/" + name + ".png")
+		img := decodePNG(t, b)
+		for y := 0; y < 32; y++ {
+			for x := 0; x < 32; x++ {
+				r, g, bl, a := img.At(x, y).RGBA()
+				if a > 0 && (r|g|bl) != 0 {
+					t.Fatalf("%s favicon has a non-black pixel at %d,%d; menu icons are mono templates", name, x, y)
+				}
+			}
+		}
+	}
 	if providerFavicon(config.Provider{Kind: config.KindOpenAIKey, BaseURL: "https://api.deepseek.com"}) != nil {
 		t.Errorf("unknown host should have no favicon")
 	}

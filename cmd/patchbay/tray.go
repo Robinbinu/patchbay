@@ -87,7 +87,11 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 	for _, p := range cfg.Providers {
 		pm := &providerMenu{parent: systray.AddMenuItem(p.Label, "")}
 		if fav := providerFavicon(p); fav != nil {
-			pm.parent.SetIcon(menuIcon(fav))
+			if templateIcon {
+				pm.parent.SetTemplateIcon(fav, fav)
+			} else {
+				pm.parent.SetIcon(menuIcon(fav))
+			}
 		}
 		pm.status = pm.parent.AddSubMenuItem("", "")
 		pm.status.Disable()
