@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robin/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/config"
 )
 
 // Per-provider access-token renewal skew, from the omp rules (Codex skew 0,
@@ -91,35 +91,55 @@ func (m *Manager) AccessToken(ctx context.Context, p config.Provider) (string, e
 	lock := m.lockFor(p.ID)
 	lock.Lock()
 	defer lock.Unlock()
-	// Re-read: another goroutine may have refreshed while we waited.
-	if cur, ok = m.store.Get(p.ID); ok && !cur.Expired(skewFor(p.Kind)) {
+	// Re-read: another goroutine may have refreshed, or a login replaced the
+	// grant, while we waited.
+	skew := skewFor(p.Kind)
+	if cur, ok = m.store.Get(p.ID); !ok {
+		return "", fmt.Errorf("not signed in to %q; run `patchbay login %s`", p.ID, p.ID)
+	}
+	if !cur.Expired(skew) {
 		return cur.Access, nil
 	}
 
-	var (
-		next Credentials
-		err  error
-	)
-	switch p.Kind {
-	case config.KindCodexOAuth:
-		next, err = RefreshCodex(ctx, cur)
-	case config.KindAnthropicOAuth:
-		next, err = RefreshAnthropic(ctx, cur)
-	case config.KindXAIOAuth:
-		next, err = RefreshXAI(ctx, cur)
-	case config.KindOpenRouterOAuth:
-		next, err = RefreshOpenRouter(ctx, cur)
-	default:
-		return "", fmt.Errorf("provider %q is not an OAuth provider", p.ID)
-	}
+	next, err := refreshCredentials(ctx, p, cur)
 	if err != nil {
+		// A login may have replaced the grant mid-refresh (and revoked the
+		// refresh token we used); the new one is what we want anyway.
+		if latest, ok := m.store.Get(p.ID); ok && latest.Refresh != cur.Refresh && !latest.Expired(skew) {
+			return latest.Access, nil
+		}
 		return "", err
 	}
 	next.Provider = p.ID
-	if err := m.store.Set(p.ID, next); err != nil {
+	stored, saved, err := m.store.CompareAndSet(p.ID, cur, next)
+	if err != nil {
 		return "", err
 	}
+	if !saved {
+		// Someone logged in or out while we refreshed; keep their change.
+		switch {
+		case stored.Access == "":
+			return "", fmt.Errorf("signed out of %q", p.ID)
+		case !stored.Expired(skew):
+			return stored.Access, nil
+		}
+	}
 	return next.Access, nil
+}
+
+// refreshCredentials exchanges a provider's refresh token; tests replace it.
+var refreshCredentials = func(ctx context.Context, p config.Provider, cur Credentials) (Credentials, error) {
+	switch p.Kind {
+	case config.KindCodexOAuth:
+		return RefreshCodex(ctx, cur)
+	case config.KindAnthropicOAuth:
+		return RefreshAnthropic(ctx, cur)
+	case config.KindXAIOAuth:
+		return RefreshXAI(ctx, cur)
+	case config.KindOpenRouterOAuth:
+		return RefreshOpenRouter(ctx, cur)
+	}
+	return Credentials{}, fmt.Errorf("provider %q is not an OAuth provider", p.ID)
 }
 
 // Status is a display snapshot of one provider's sign-in state.

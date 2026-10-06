@@ -11,13 +11,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/robin/patchbay/internal/auth"
-	"github.com/robin/patchbay/internal/config"
-	"github.com/robin/patchbay/internal/providers"
+	"github.com/Robinbinu/patchbay/internal/auth"
+	"github.com/Robinbinu/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/providers"
 )
 
 // Server is the HTTP proxy.
@@ -62,7 +63,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) authorized(r *http.Request) bool {
-	want := s.cfg.LocalAPIKey
+	want := s.cfg.LocalKey()
 	if want == "" {
 		return true
 	}
@@ -77,13 +78,45 @@ func (s *Server) authorized(r *http.Request) bool {
 	return false
 }
 
+// handleModels lists every routable model, sorted so tools' model pickers stay
+// stable. Anthropic clients (they send anthropic-version) get the Anthropic
+// list format and only the models that work on /v1/messages; everyone else
+// gets the OpenAI format with each model's surface.
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	models := s.refreshIndex(r.Context())
+	sort.Slice(models, func(i, j int) bool { return canonical(models[i]) < canonical(models[j]) })
+
+	if r.Header.Get("anthropic-version") != "" {
+		data := make([]map[string]any, 0, len(models))
+		for _, m := range models {
+			if m.Surface != providers.SurfaceMessages {
+				continue
+			}
+			name := m.Label
+			if name == "" {
+				name = m.ID
+			}
+			data = append(data, map[string]any{
+				"type":         "model",
+				"id":           canonical(m),
+				"display_name": name,
+				"created_at":   "1970-01-01T00:00:00Z", // upstream lists don't all carry dates
+			})
+		}
+		resp := map[string]any{"data": data, "has_more": false, "first_id": nil, "last_id": nil}
+		if len(data) > 0 {
+			resp["first_id"], resp["last_id"] = data[0]["id"], data[len(data)-1]["id"]
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
 	data := make([]map[string]any, 0, len(models))
 	for _, m := range models {
 		data = append(data, map[string]any{
 			"id":       canonical(m), // provider-prefixed, e.g. "codex/gpt-5.6-luna"
 			"object":   "model",
+			"created":  0, // required by strict OpenAI clients; upstreams don't all provide it
 			"owned_by": m.Provider,
 			"surface":  m.Surface,
 		})
@@ -110,14 +143,10 @@ func (s *Server) handleForward(surface string) http.HandlerFunc {
 		}
 		p, bare, ok := s.providerForModel(r.Context(), model)
 		if !ok {
-			// Fall back to the first enabled provider whose surface matches;
-			// forward the model id unchanged.
-			if fp, fok := s.providerForSurface(surface); fok {
-				p, bare = fp, model
-			} else {
-				writeError(w, http.StatusNotFound, fmt.Sprintf("no provider serves model %q", model))
-				return
-			}
+			writeError(w, http.StatusNotFound, fmt.Sprintf(
+				"unknown model %q: use an id from GET /v1/models, or prefix a provider id "+
+					"(e.g. \"openai/%s\") to send a model that provider doesn't list", model, model))
+			return
 		}
 		if bare != model {
 			body = rewriteModel(body, bare)
@@ -142,22 +171,25 @@ func (s *Server) providerForModel(ctx context.Context, model string) (config.Pro
 		rec, ok = lookup()
 	}
 	if !ok {
-		return config.Provider{}, "", false
+		// An explicit "<provider>/<model>" reaches a model the provider
+		// doesn't list (e.g. a local server without /models). A bare unknown
+		// id is never guessed at: sending it to an arbitrary provider turns a
+		// typo into a confusing upstream error.
+		id, rest, found := strings.Cut(model, "/")
+		if !found || rest == "" {
+			return config.Provider{}, "", false
+		}
+		p, found := s.cfg.Provider(id)
+		if !found || !p.Enabled {
+			return config.Provider{}, "", false
+		}
+		return *p, rest, true
 	}
 	p, found := s.cfg.Provider(rec.Provider)
 	if !found {
 		return config.Provider{}, "", false
 	}
 	return *p, rec.ID, true
-}
-
-func (s *Server) providerForSurface(surface string) (config.Provider, bool) {
-	for _, p := range s.cfg.Providers {
-		if p.Enabled && providers.Surface(p.Kind) == surface {
-			return p, true
-		}
-	}
-	return config.Provider{}, false
 }
 
 // refreshIndex rebuilds the model->provider index (cached 60s) and returns the

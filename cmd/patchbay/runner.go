@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robin/patchbay/internal/proxy"
+	"github.com/Robinbinu/patchbay/internal/proxy"
 )
 
 // proxyRunner starts and stops the HTTP server on demand, so the menu bar can
@@ -76,6 +76,14 @@ func (r *proxyRunner) Stop() {
 	if err := srv.Shutdown(ctx); err != nil {
 		_ = srv.Close()
 	}
+}
+
+// SetAddr changes where the next Start listens; a running server keeps its
+// address until it is stopped.
+func (r *proxyRunner) SetAddr(addr string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.addr = addr
 }
 
 func (r *proxyRunner) Running() bool {

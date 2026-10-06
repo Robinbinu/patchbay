@@ -1,0 +1,50 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! **Never paste tokens, `pby-…` / `sk-…` keys or `Authorization` headers.**
+  - type: input
+    id: version
+    attributes:
+      label: Patchbay version
+      description: Output of `patchbay version`, or the release you downloaded
+      placeholder: v0.1.0-beta.1
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options: [macOS, Windows, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options: [macOS app (.dmg), Windows app (.zip), CLI archive, go install / source]
+  - type: input
+    id: provider
+    attributes:
+      label: Provider(s) involved
+      placeholder: codex, claude, grok, openrouter, openai-key, …
+  - type: input
+    id: client
+    attributes:
+      label: Client tool
+      placeholder: Claude Code, OpenAI SDK, curl, …
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you got. Include the HTTP status and error message.
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: "`patchbay status` output (redact emails if you like)"
+      render: text

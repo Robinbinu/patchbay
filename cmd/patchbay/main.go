@@ -14,15 +14,28 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/robin/patchbay/internal/auth"
-	"github.com/robin/patchbay/internal/config"
-	"github.com/robin/patchbay/internal/proxy"
+	"github.com/Robinbinu/patchbay/internal/auth"
+	"github.com/Robinbinu/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/proxy"
 )
 
+// version is stamped at release build time with -ldflags "-X main.version=…".
+var version = "dev"
+
+// appBuild is stamped to "1" for the double-clickable macOS .app and Windows
+// GUI builds, which the OS launches with no arguments.
+var appBuild = ""
+
 func main() {
-	if len(os.Args) < 2 {
+	args := commandArgs(os.Args[1:], appBuild == "1")
+	if len(args) < 1 {
 		usage()
 		os.Exit(2)
+	}
+	switch args[0] {
+	case "version", "--version", "-v":
+		fmt.Println("patchbay", version)
+		return
 	}
 	cfg, err := config.Load()
 	check(err)
@@ -30,8 +43,8 @@ func main() {
 	check(err)
 	mgr := auth.NewManager(store)
 
-	cmd := os.Args[1]
-	args := os.Args[2:]
+	cmd := args[0]
+	args = args[1:]
 	switch cmd {
 	case "serve":
 		runServe(cfg, mgr)
@@ -45,6 +58,8 @@ func main() {
 		runProvider(cfg, args)
 	case "key":
 		runKey(cfg, args)
+	case "port":
+		runPort(cfg, args)
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -56,17 +71,35 @@ func main() {
 
 func runServe(cfg *config.Config, mgr *auth.Manager) {
 	srv := proxy.New(cfg, mgr)
-	fmt.Printf("Patchbay listening on http://%s\n", cfg.Listen)
-	fmt.Printf("  Local API key: %s\n", cfg.LocalAPIKey)
-	fmt.Printf("  OpenAI base:    http://%s/v1\n", cfg.Listen)
-	fmt.Printf("  Anthropic base: http://%s\n", cfg.Listen)
-	fmt.Println("  Endpoints: /v1/models  /v1/chat/completions  /v1/responses  /v1/messages")
 	// The HTTP server runs on a background goroutine so the main goroutine is
 	// free for the UI loop: on macOS the menu-bar (Cocoa) event loop must own
 	// the main thread. Without -tags tray, runUI exits when the server stops.
-	runner := newProxyRunner(cfg.Listen, srv.Handler())
-	startErr := runner.Start()
-	runUI(cfg, mgr, runner, startErr)
+	runner := newProxyRunner(cfg.ListenAddr(), srv.Handler())
+	moved, startErr := startProxy(cfg, runner)
+	if moved != "" {
+		fmt.Printf("Port %d was taken; moved to %s (saved).\n", portOf(moved), cfg.ListenAddr())
+	}
+	if startErr == nil {
+		addr := cfg.ListenAddr()
+		fmt.Printf("Patchbay listening on http://%s\n", addr)
+		fmt.Printf("  Local API key: %s\n", cfg.LocalKey())
+		fmt.Printf("  OpenAI base:    http://%s/v1\n", addr)
+		fmt.Printf("  Anthropic base: http://%s\n", addr)
+		fmt.Println("  Endpoints: /v1/models  /v1/chat/completions  /v1/responses  /v1/messages")
+	}
+	runUI(cfg, mgr, runner, moved, startErr)
+}
+
+func runPort(cfg *config.Config, args []string) {
+	if len(args) < 1 {
+		fmt.Println(portOf(cfg.ListenAddr()))
+		return
+	}
+	port, err := parsePort(args[0])
+	check(err)
+	cfg.SetListen(withPort(cfg.ListenAddr(), port))
+	check(cfg.Save())
+	fmt.Printf("Patchbay will listen on http://%s. Restart Patchbay, then update your tools' base URL.\n", cfg.ListenAddr())
 }
 
 func runLogin(cfg *config.Config, mgr *auth.Manager, args []string) {
@@ -135,7 +168,7 @@ func runProvider(cfg *config.Config, args []string) {
 	case "add":
 		if len(args) < 3 {
 			fmt.Fprintln(os.Stderr, "usage: patchbay provider add <id> <kind> [base_url]")
-			fmt.Fprintln(os.Stderr, "kinds: "+strings.Join([]string{config.KindOpenAIKey, config.KindAnthropicKey, config.KindCodexOAuth, config.KindAnthropicOAuth}, ", "))
+			fmt.Fprintln(os.Stderr, "kinds: "+strings.Join([]string{config.KindOpenAIKey, config.KindAnthropicKey, config.KindCodexOAuth, config.KindAnthropicOAuth, config.KindXAIOAuth, config.KindOpenRouterOAuth}, ", "))
 			os.Exit(2)
 		}
 		p := config.Provider{ID: args[1], Kind: args[2], Label: args[1], Enabled: true}
@@ -181,12 +214,12 @@ func runProvider(cfg *config.Config, args []string) {
 
 func runKey(cfg *config.Config, args []string) {
 	if len(args) >= 1 && args[0] == "rotate" {
-		cfg.RotateLocalKey()
+		key := cfg.RotateLocalKey()
 		check(cfg.Save())
-		fmt.Printf("New local API key: %s\n", cfg.LocalAPIKey)
+		fmt.Printf("New local API key: %s\n", key)
 		return
 	}
-	fmt.Println(cfg.LocalAPIKey)
+	fmt.Println(cfg.LocalKey())
 }
 
 func usage() {
@@ -194,20 +227,37 @@ func usage() {
 
 Usage:
   patchbay serve                      Start the proxy (and menu bar, if built with -tags tray)
-  patchbay login <id>                 Sign in to an OAuth provider (codex, claude)
+  patchbay login <id>                 Sign in to an OAuth provider (codex, claude, grok, openrouter)
   patchbay logout <id>                Forget an OAuth provider's credentials
   patchbay status                     Show every provider's sign-in and expiry
   patchbay provider add <id> <kind> [base_url]
   patchbay provider key <id> <api-key>
   patchbay provider rm <id>
   patchbay key [rotate]               Print (or rotate) the local API key
+  patchbay port [number]              Print (or set) the port; a taken port moves to the next free one
+  patchbay version                    Print the Patchbay version
 
 Provider kinds:
   codex-oauth      ChatGPT plan (Codex), OAuth
   anthropic-oauth  Claude Pro/Max, OAuth
+  xai-oauth        Grok (SuperGrok / X Premium+), OAuth device code
+  openrouter-oauth OpenRouter, OAuth
   anthropic-key    Anthropic Console API key
   openai-key       OpenAI-compatible API key (OpenAI, OpenRouter, DeepSeek, …)
 `)
+}
+
+// commandArgs returns the command line to run. An app build launched with no
+// command starts serving. Older macOS appends a -psn_… process serial number
+// when launching from Finder, which is not a command.
+func commandArgs(args []string, app bool) []string {
+	if len(args) > 0 && strings.HasPrefix(args[0], "-psn_") {
+		args = args[1:]
+	}
+	if len(args) == 0 && app {
+		return []string{"serve"}
+	}
+	return args
 }
 
 func dash(s string) string {

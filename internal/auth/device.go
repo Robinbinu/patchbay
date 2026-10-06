@@ -42,7 +42,7 @@ func (f deviceFlow) run(ctx context.Context) (tokenResponse, error) {
 		shown = da.VerificationURI
 	}
 	fmt.Printf("\nTo sign in, open:\n\n  %s\n\nand enter code:  %s\n\nWaiting for approval…\n", shown, da.UserCode)
-	_ = openBrowser(shown)
+	_ = OpenBrowser(shown)
 
 	interval := time.Duration(da.Interval) * time.Second
 	if interval <= 0 {

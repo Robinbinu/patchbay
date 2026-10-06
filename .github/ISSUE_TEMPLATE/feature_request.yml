@@ -1,0 +1,15 @@
+name: Feature or provider request
+description: Suggest an idea or a provider to support
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like Patchbay to do?
+      description: For a provider, include its name, how you sign in (OAuth / API key) and its API format.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter to you?

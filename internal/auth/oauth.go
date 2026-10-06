@@ -89,7 +89,7 @@ func (f loopbackFlow) run(ctx context.Context, timeout time.Duration) (code, ver
 	}()
 
 	authURL := f.authorizeURL(state, f.redirectURI(), pkce.Challenge)
-	_ = openBrowser(authURL)
+	_ = OpenBrowser(authURL)
 	fmt.Printf("\nOpen this URL to sign in if your browser did not:\n\n  %s\n\n", authURL)
 
 	select {
@@ -127,8 +127,8 @@ func writeBrowserPage(w http.ResponseWriter, ok bool, detail string) {
 		title, map[bool]string{true: "✓", false: "⚠"}[ok], title, body)
 }
 
-// openBrowser best-effort launches the OS browser.
-func openBrowser(target string) error {
+// OpenBrowser best-effort launches the OS browser.
+func OpenBrowser(target string) error {
 	if _, err := url.Parse(target); err != nil {
 		return err
 	}
