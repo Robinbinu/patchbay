@@ -13,17 +13,45 @@ func TestStateFor(t *testing.T) {
 	down := errors.New("listen tcp 127.0.0.1:8317: bind: address already in use")
 	cases := []struct {
 		proxyErr  error
+		stopped   bool
 		needLogin bool
 		want      trayState
 	}{
-		{nil, false, stateOK},
-		{nil, true, stateNeedsLogin},
-		{down, false, stateProxyDown},
-		{down, true, stateProxyDown}, // a dead proxy outranks a lapsed login
+		{nil, false, false, stateOK},
+		{nil, false, true, stateNeedsLogin},
+		{down, false, false, stateProxyDown},
+		{down, false, true, stateProxyDown}, // a dead proxy outranks a lapsed login
+		{nil, true, true, stateStopped},     // the user turned it off; nothing to warn about
 	}
 	for _, c := range cases {
-		if got := stateFor(c.proxyErr, c.needLogin); got != c.want {
-			t.Errorf("stateFor(%v, %v) = %v, want %v", c.proxyErr, c.needLogin, got, c.want)
+		if got := stateFor(c.proxyErr, c.stopped, c.needLogin); got != c.want {
+			t.Errorf("stateFor(%v, %v, %v) = %v, want %v", c.proxyErr, c.stopped, c.needLogin, got, c.want)
+		}
+	}
+}
+
+func maxAlpha(img image.Image) uint32 {
+	var m uint32
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a > m {
+				m = a
+			}
+		}
+	}
+	return m
+}
+
+func TestStoppedIconIsDimmed(t *testing.T) {
+	mac := decodePNG(t, templateIconPNG(stateStopped))
+	if a := maxAlpha(mac); a == 0 || a > 0x7000 {
+		t.Errorf("stopped template max alpha %#x; want a visible but dimmed glyph", a)
+	}
+	for _, lightBar := range []bool{false, true} {
+		win := parseICO(t, windowsIconICO(stateStopped, lightBar))[3].img
+		if a := maxAlpha(win); a == 0 || a > 0x7000 {
+			t.Errorf("lightBar=%v: stopped icon max alpha %#x; want dimmed", lightBar, a)
 		}
 	}
 }

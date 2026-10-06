@@ -16,12 +16,16 @@ const (
 	stateOK trayState = iota
 	stateNeedsLogin
 	stateProxyDown
+	stateStopped // turned off from the menu
 )
 
-// stateFor picks the icon state. A proxy that failed to listen outranks a
-// lapsed login: no request works until it is fixed.
-func stateFor(proxyErr error, needLogin bool) trayState {
+// stateFor picks the icon state. A proxy the user turned off is shown as off,
+// not as a problem. A proxy that failed to listen outranks a lapsed login: no
+// request works until it is fixed.
+func stateFor(proxyErr error, stopped, needLogin bool) trayState {
 	switch {
+	case stopped:
+		return stateStopped
 	case proxyErr != nil:
 		return stateProxyDown
 	case needLogin:
@@ -161,6 +165,10 @@ func (l *layout) badgeCovers(p pt, st trayState, colored bool) bool {
 	return false
 }
 
+// stoppedAlpha dims the whole glyph when the proxy is off, the way macOS draws
+// an inactive status item.
+const stoppedAlpha = 0.4
+
 // renderIcon rasterizes the glyph at px×px, supersampling each pixel for
 // antialiased edges.
 func renderIcon(px int, ink color.NRGBA, st trayState, colored bool) *image.NRGBA {
@@ -173,7 +181,10 @@ func renderIcon(px int, ink color.NRGBA, st trayState, colored bool) *image.NRGB
 		}
 	}
 	img := image.NewNRGBA(image.Rect(0, 0, px, px))
-	const n = supersample * supersample
+	n := float64(supersample * supersample)
+	if st == stateStopped {
+		n /= stoppedAlpha
+	}
 	for y := 0; y < px; y++ {
 		for x := 0; x < px; x++ {
 			// Premultiplied sums, so edge pixels between two colors blend correctly.
@@ -209,7 +220,7 @@ func renderIcon(px int, ink color.NRGBA, st trayState, colored bool) *image.NRGB
 }
 
 func (l *layout) sampleColor(p pt, st trayState, colored bool, ink, badgeInk color.NRGBA) (color.NRGBA, bool) {
-	badged := st != stateOK
+	badged := st == stateNeedsLogin || st == stateProxyDown
 	if badged {
 		if l.badgeCovers(p, st, colored) {
 			return badgeInk, true

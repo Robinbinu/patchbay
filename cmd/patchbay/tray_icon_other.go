@@ -6,3 +6,5 @@ package main
 const templateIcon = true
 
 func trayIcon(st trayState) []byte { return templateIconPNG(st) }
+
+func menuIcon(png []byte) []byte { return png }

@@ -9,6 +9,9 @@ const templateIcon = false
 
 func trayIcon(st trayState) []byte { return windowsIconICO(st, lightTaskbar()) }
 
+// menuIcon wraps a 32px PNG for a menu item; Windows loads menu icons from ICO.
+func menuIcon(png []byte) []byte { return encodeICO([]int{32}, [][]byte{png}) }
+
 // lightTaskbar reports whether the taskbar uses the light theme. The system
 // (taskbar) theme is separate from the app theme; it defaults to dark.
 func lightTaskbar() bool {
