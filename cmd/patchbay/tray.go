@@ -14,6 +14,7 @@ import (
 	"github.com/Robinbinu/patchbay/internal/auth"
 	"github.com/Robinbinu/patchbay/internal/autostart"
 	"github.com/Robinbinu/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/update"
 )
 
 // Links in the menu's footer.
@@ -21,7 +22,20 @@ const (
 	repoURL     = "https://github.com/Robinbinu/patchbay"
 	authorURL   = "https://github.com/Robinbinu"
 	linkedinURL = "https://www.linkedin.com/in/michaelrobink"
+	releasesURL = repoURL + "/releases"
 )
+
+// updateEvery is how often the menu looks for a new release in the background.
+const updateEvery = 24 * time.Hour
+
+// updateResult is one finished release check; manual checks report every
+// outcome, background ones only a newer release.
+type updateResult struct {
+	release update.Release
+	newer   bool
+	err     error
+	manual  bool
+}
 
 // runUI runs the menu-bar event loop on the main goroutine. On macOS the Cocoa
 // loop systray drives must own the main thread, so the caller runs the HTTP
@@ -122,6 +136,7 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 	}
 
 	systray.AddSeparator()
+	checkUpdate := systray.AddMenuItem("Check for updates…", "Look for a newer release on GitHub")
 	about := systray.AddMenuItem("Patchbay "+version+" on GitHub", repoURL)
 	author := systray.AddMenuItem("Made by Robinbinu", authorURL)
 	linkedin := systray.AddMenuItem("Connect on LinkedIn", linkedinURL)
@@ -186,12 +201,65 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 	}
 	refresh()
 
+	updates := make(chan updateResult, 1)
+	var available *update.Release
+	checking := false
+	startCheck := func(manual bool) {
+		if checking {
+			return
+		}
+		checking = true
+		if manual {
+			checkUpdate.SetTitle("Checking for updates…")
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			r, newer, err := update.Check(ctx, update.DefaultClient, version)
+			updates <- updateResult{release: r, newer: newer, err: err, manual: manual}
+		}()
+	}
+	// Development builds have no version to compare; don't check in the background.
+	devBuild := version == "dev"
+	updateTicker := time.NewTicker(updateEvery)
+	if !devBuild {
+		startCheck(false)
+	}
+
 	ticker := time.NewTicker(15 * time.Second)
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
 				refresh()
+			case <-updateTicker.C:
+				if !devBuild && available == nil {
+					startCheck(false)
+				}
+			case <-checkUpdate.ClickedCh:
+				switch {
+				case available != nil:
+					_ = auth.OpenBrowser(available.URL)
+				case devBuild:
+					checkUpdate.SetTitle("Development build: see all releases")
+					_ = auth.OpenBrowser(releasesURL)
+				default:
+					startCheck(true)
+				}
+			case res := <-updates:
+				checking = false
+				switch {
+				case res.newer:
+					available = &res.release
+					checkUpdate.SetTitle("Update available: " + res.release.Tag + " — Download")
+				case !res.manual:
+					// Background checks stay quiet unless there is something new.
+				case res.err != nil:
+					fmt.Fprintln(os.Stderr, "error: update check:", res.err)
+					checkUpdate.SetTitle("Update check failed — try again")
+				default:
+					checkUpdate.SetTitle("Patchbay is up to date (" + version + ")")
+				}
 			case err := <-runner.Failed():
 				fmt.Fprintln(os.Stderr, "error:", err)
 				proxyFail = err
@@ -234,6 +302,7 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 				_ = auth.OpenBrowser(linkedinURL)
 			case <-quit.ClickedCh:
 				ticker.Stop()
+				updateTicker.Stop()
 				systray.Quit()
 				return
 			}

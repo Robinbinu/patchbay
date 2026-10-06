@@ -40,7 +40,8 @@ all of them and hands every tool on your machine **one URL and one key**.
   `openrouter/openai/gpt-…` and Patchbay sends it to whoever owns that model.
 - **Lives in your menu bar.** See every account at a glance. The icon tells you
   when a login is about to expire; one click signs you back in. Tick
-  **Launch at login** and it's always there.
+  **Launch at login** and it's always there, and it tells you when a new
+  version is out.
 - **Local and private.** Listens on `127.0.0.1` only. Your provider tokens stay
   in `~/.patchbay` (mode `0600`); tools only ever see a local `pby-…` key.
   No telemetry, no cloud relay.
@@ -313,6 +314,10 @@ patchbay version                       Print the version
   - `credentials.json`: OAuth tokens and expiry (`0600`)
 - Patchbay only talks to the providers you configure: to list their models and
   to forward your requests. No telemetry, no third-party relay.
+- The menu-bar app checks GitHub's public releases list
+  (`api.github.com/repos/Robinbinu/patchbay/releases`) at launch and once a
+  day to tell you about new versions. It sends no data beyond the request
+  itself and never downloads or installs anything on its own.
 - Rotate the local key any time with `patchbay key rotate`.
 
 Found a vulnerability? See [SECURITY.md](SECURITY.md).
@@ -330,6 +335,11 @@ restart Patchbay.
 
 **The menu-bar app and `patchbay serve` at the same time?**
 Run one. They share the same config and port, so the second one can't listen.
+
+**How do I update?**
+The menu shows **Update available: vX — Download** when a new release is out
+(or use **Check for updates…**). It opens the release page; download and
+replace the app.
 
 **A login expired.**
 The menu-bar icon shows a badge. Open the provider's submenu and click

@@ -23,6 +23,9 @@ First public beta.
 - **Launch at login** from the menu (macOS LaunchAgent, Windows Run key,
   Linux XDG autostart).
 - Links to the project, its author's GitHub and LinkedIn in the menu.
+- **Check for updates** from the menu; the app also checks GitHub Releases at
+  launch and daily (beta builds are offered betas, stable builds only stable).
+- Mono provider icons in the menu, tinted for light and dark menus on macOS.
 - macOS universal `Patchbay.app` (in a `.dmg`), Windows tray app with icon and
   version info, Linux and macOS CLI archives.
 - `patchbay version`.

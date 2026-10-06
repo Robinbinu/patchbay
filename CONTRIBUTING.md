@@ -36,6 +36,7 @@ way: new dependencies need a good reason.
 | --- | --- |
 | `cmd/patchbay` | CLI entry point, tray UI, icon rendering |
 | `internal/autostart` | Launch at login per OS |
+| `internal/update` | Release check against GitHub |
 | `internal/auth` | OAuth flows (PKCE, device code), token store, refresh |
 | `internal/config` | `~/.patchbay/config.json`, provider kinds, local key |
 | `internal/providers` | Upstream base URLs, model lists, surfaces |
@@ -47,7 +48,8 @@ way: new dependencies need a good reason.
 1. Add a `Kind…` constant in `internal/config/config.go`.
 2. Implement its sign-in in `internal/auth` (see `codex.go`, `xai.go`).
 3. Teach `internal/providers/catalog.go` its base URL, surface and model list.
-4. Add a favicon under `cmd/patchbay/favicons/`.
+4. Add a 32×32 favicon under `cmd/patchbay/favicons/`: the provider's mark
+   only, black on transparent (a test enforces mono).
 5. Document it in the README's Providers table.
 
 ## Pull requests
