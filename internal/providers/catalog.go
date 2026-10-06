@@ -30,6 +30,8 @@ const (
 	codexUserAgent     = "patchbay/0.1 (+https://github.com/robin/patchbay)"
 	anthropicBase      = "https://api.anthropic.com"
 	openaiBase         = "https://api.openai.com/v1"
+	xaiBase            = "https://api.x.ai/v1"
+	openrouterBase     = "https://openrouter.ai/api/v1"
 	anthropicVersion   = "2023-06-01"
 	anthropicOAuthBeta = "oauth-2025-04-20"
 )
@@ -54,6 +56,10 @@ func BaseURL(p config.Provider) string {
 		return anthropicBase
 	case config.KindOpenAIKey:
 		return openaiBase
+	case config.KindXAIOAuth:
+		return xaiBase
+	case config.KindOpenRouterOAuth:
+		return openrouterBase
 	}
 	return ""
 }
@@ -63,9 +69,9 @@ func Surface(kind string) string {
 	switch kind {
 	case config.KindAnthropicOAuth, config.KindAnthropicKey:
 		return SurfaceMessages
-	case config.KindCodexOAuth:
+	case config.KindCodexOAuth, config.KindXAIOAuth:
 		return SurfaceResponses
-	case config.KindOpenAIKey:
+	case config.KindOpenAIKey, config.KindOpenRouterOAuth:
 		return SurfaceChat
 	}
 	return ""
@@ -80,6 +86,10 @@ func Models(ctx context.Context, mgr *auth.Manager, p config.Provider) ([]Model,
 		return anthropicModels(ctx, mgr, p)
 	case config.KindOpenAIKey:
 		return openAIModels(ctx, p)
+	case config.KindXAIOAuth:
+		return bearerModels(ctx, mgr, p, SurfaceResponses)
+	case config.KindOpenRouterOAuth:
+		return bearerModels(ctx, mgr, p, SurfaceChat)
 	}
 	return nil, fmt.Errorf("unknown provider kind %q", p.Kind)
 }
@@ -167,6 +177,35 @@ func anthropicModels(ctx context.Context, mgr *auth.Manager, p config.Provider) 
 	out := make([]Model, 0, len(parsed.Data))
 	for _, e := range parsed.Data {
 		out = append(out, Model{ID: e.ID, Provider: p.ID, Surface: SurfaceMessages, Label: e.DisplayName})
+	}
+	return out, nil
+}
+
+// bearerModels lists an OpenAI-style /models for an OAuth provider whose token
+// goes in Authorization: Bearer (xAI, OpenRouter).
+func bearerModels(ctx context.Context, mgr *auth.Manager, p config.Provider, surface string) ([]Model, error) {
+	token, err := mgr.AccessToken(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, BaseURL(p)+"/models", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	body, err := doJSON(req)
+	if err != nil {
+		return nil, err
+	}
+	var parsed struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, err
+	}
+	out := make([]Model, 0, len(parsed.Data))
+	for _, e := range parsed.Data {
+		out = append(out, Model{ID: e.ID, Provider: p.ID, Surface: surface})
 	}
 	return out, nil
 }

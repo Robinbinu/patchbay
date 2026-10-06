@@ -16,11 +16,22 @@ import (
 
 // Provider kinds understood by the proxy router.
 const (
-	KindCodexOAuth     = "codex-oauth"     // ChatGPT plan, OAuth, Responses API
-	KindAnthropicOAuth = "anthropic-oauth" // Claude Pro/Max, OAuth, Messages API
-	KindAnthropicKey   = "anthropic-key"   // Anthropic Console API key, Messages API
-	KindOpenAIKey      = "openai-key"      // OpenAI-compatible API key, Chat/Responses
+	KindCodexOAuth      = "codex-oauth"      // ChatGPT plan, OAuth, Responses API
+	KindAnthropicOAuth  = "anthropic-oauth"  // Claude Pro/Max, OAuth, Messages API
+	KindAnthropicKey    = "anthropic-key"    // Anthropic Console API key, Messages API
+	KindOpenAIKey       = "openai-key"       // OpenAI-compatible API key, Chat/Responses
+	KindXAIOAuth        = "xai-oauth"        // Grok (SuperGrok/X Premium+), OAuth device-code, Responses API
+	KindOpenRouterOAuth = "openrouter-oauth" // OpenRouter, OAuth (PKCE) → durable key, Chat API
 )
+
+// OAuthKind reports whether a provider kind signs in interactively (vs. a key).
+func OAuthKind(kind string) bool {
+	switch kind {
+	case KindCodexOAuth, KindAnthropicOAuth, KindXAIOAuth, KindOpenRouterOAuth:
+		return true
+	}
+	return false
+}
 
 // Provider is one configured upstream. OAuth kinds draw their token from the
 // credential store (keyed by ID); key kinds carry the key inline.
@@ -78,6 +89,8 @@ func Default() *Config {
 		Providers: []Provider{
 			{ID: "codex", Kind: KindCodexOAuth, Label: "ChatGPT (Codex)", Enabled: true},
 			{ID: "claude", Kind: KindAnthropicOAuth, Label: "Claude (Pro/Max)", Enabled: true},
+			{ID: "grok", Kind: KindXAIOAuth, Label: "Grok (xAI)", Enabled: true},
+			{ID: "openrouter", Kind: KindOpenRouterOAuth, Label: "OpenRouter", Enabled: true},
 		},
 	}
 }

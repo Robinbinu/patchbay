@@ -57,6 +57,10 @@ func (m *Manager) Login(ctx context.Context, p config.Provider) (Credentials, er
 		c, err = LoginCodex(ctx)
 	case config.KindAnthropicOAuth:
 		c, err = LoginAnthropic(ctx)
+	case config.KindXAIOAuth:
+		c, err = LoginXAI(ctx)
+	case config.KindOpenRouterOAuth:
+		c, err = LoginOpenRouter(ctx)
 	default:
 		return Credentials{}, fmt.Errorf("provider %q (kind %s) is not an OAuth provider", p.ID, p.Kind)
 	}
@@ -101,6 +105,10 @@ func (m *Manager) AccessToken(ctx context.Context, p config.Provider) (string, e
 		next, err = RefreshCodex(ctx, cur)
 	case config.KindAnthropicOAuth:
 		next, err = RefreshAnthropic(ctx, cur)
+	case config.KindXAIOAuth:
+		next, err = RefreshXAI(ctx, cur)
+	case config.KindOpenRouterOAuth:
+		next, err = RefreshOpenRouter(ctx, cur)
 	default:
 		return "", fmt.Errorf("provider %q is not an OAuth provider", p.ID)
 	}
@@ -134,8 +142,8 @@ func (m *Manager) Statuses(cfg *config.Config) []Status {
 	out := make([]Status, 0, len(cfg.Providers))
 	for _, p := range cfg.Providers {
 		s := Status{ID: p.ID, Label: p.Label, Kind: p.Kind}
-		switch p.Kind {
-		case config.KindCodexOAuth, config.KindAnthropicOAuth:
+		switch {
+		case config.OAuthKind(p.Kind):
 			if c, ok := m.store.Get(p.ID); ok {
 				s.SignedIn = true
 				s.Email = c.Email

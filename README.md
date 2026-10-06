@@ -24,7 +24,10 @@ is about to expire.
   credentials never leave the machine.
 - **Model-based routing.** Patchbay builds a model → provider index from each
   provider's own model list and routes every request to the owner of the
-  requested `model`.
+  requested `model`. `/v1/models` advertises **provider-prefixed** ids
+  (`codex/gpt-5.6-luna`, `grok/grok-4.6`, `openrouter/openai/gpt-5.5`); send a
+  prefixed id to pick a provider explicitly, or a bare id to let Patchbay
+  resolve it. The upstream always sees its own bare model id.
 - **Login status & expiry.** `patchbay status` and the menu bar show each
   account, its plan, and when the access token and the overall login expire,
   with a one-click **Log in again** when a login lapses.
@@ -35,8 +38,13 @@ is about to expire.
 | --- | --- | --- |
 | `codex-oauth` | ChatGPT Plus/Pro/Team plan, OAuth (PKCE) | Responses |
 | `anthropic-oauth` | Claude Pro/Max, OAuth (PKCE) | Messages |
+| `xai-oauth` | Grok (SuperGrok / X Premium+), OAuth (device-code) | Responses |
+| `openrouter-oauth` | OpenRouter, OAuth (PKCE) → durable key | Chat |
 | `anthropic-key` | Anthropic Console API key | Messages |
 | `openai-key` | OpenAI-compatible API key (OpenAI, OpenRouter, DeepSeek, …) | Chat/Responses |
+
+Seeded providers (`codex`, `claude`, `grok`, `openrouter`) are ready to
+`login`; add more with `patchbay provider add`.
 
 The OAuth flows (authorize URL, PKCE, loopback callback, token exchange,
 refresh, identity, expiry) follow the approach used by
@@ -61,6 +69,8 @@ go build -tags tray -o patchbay ./cmd/patchbay
 # 1. Sign in to the providers you want
 patchbay login codex      # opens the browser (ChatGPT plan)
 patchbay login claude     # opens the browser (Claude Pro/Max)
+patchbay login grok       # device code: open the URL, enter the code
+patchbay login openrouter # opens the browser; mints a durable key
 
 # 2. (optional) Add an API-key provider
 patchbay provider add openai openai-key

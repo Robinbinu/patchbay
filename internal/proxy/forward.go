@@ -128,6 +128,15 @@ func (s *Server) applyUpstreamAuth(r *http.Request, req *http.Request, p config.
 
 	case config.KindOpenAIKey:
 		req.Header.Set("Authorization", "Bearer "+p.APIKey)
+
+	case config.KindXAIOAuth, config.KindOpenRouterOAuth:
+		// Both authenticate with a plain bearer: xAI an OAuth access token,
+		// OpenRouter the durable key minted at login.
+		token, err := s.mgr.AccessToken(r.Context(), p)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	return nil
 }
