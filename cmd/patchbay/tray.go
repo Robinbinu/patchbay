@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"fyne.io/systray"
@@ -43,8 +44,8 @@ type updateResult struct {
 // until the user quits. If the server can't start or stops on its own (say its
 // port is taken), the icon shows it instead of the app vanishing, and the menu
 // can start it again.
-func runUI(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startErr error) {
-	systray.Run(func() { onReady(cfg, mgr, runner, startErr) }, func() { os.Exit(0) })
+func runUI(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, moved string, startErr error) {
+	systray.Run(func() { onReady(cfg, mgr, runner, moved, startErr) }, func() { os.Exit(0) })
 }
 
 // providerMenu is the set of items that make up one provider's submenu.
@@ -57,7 +58,14 @@ type providerMenu struct {
 	logout  *systray.MenuItem
 }
 
-func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startErr error) {
+// portInput is what the user typed into the port dialog.
+type portInput struct {
+	text string
+	ok   bool
+	err  error
+}
+
+func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, moved string, startErr error) {
 	var shown []byte
 	setState := func(st trayState) {
 		if icon := trayIcon(st); !bytes.Equal(icon, shown) {
@@ -86,8 +94,8 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 	status := systray.AddMenuItem("", "")
 	status.Disable()
 	connect := systray.AddMenuItem("Connect a Tool", "Base URLs and the local API key for your tools")
-	copyOpenAI := connect.AddSubMenuItem(fmt.Sprintf("Copy OpenAI Base URL  (http://%s/v1)", cfg.Listen), "")
-	copyAnthropic := connect.AddSubMenuItem(fmt.Sprintf("Copy Anthropic Base URL  (http://%s)", cfg.Listen), "")
+	copyOpenAI := connect.AddSubMenuItem("", "")
+	copyAnthropic := connect.AddSubMenuItem("", "")
 	copyKey := connect.AddSubMenuItem("Copy API Key", "The local pby-… key every tool uses")
 	rotate := connect.AddSubMenuItem("Rotate API Key", "Issue a new key; existing tools must update")
 	power := systray.AddMenuItem("Stop Proxy", "Stop or start serving; the menu bar stays")
@@ -136,7 +144,15 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 
 	systray.AddSeparator()
 	atLogin := systray.AddMenuItemCheckbox("Launch at Login", "Start Patchbay when you log in", autostart.Enabled())
+	portItem := systray.AddMenuItem("", "Change the port Patchbay listens on")
 	checkUpdate := systray.AddMenuItem("Check for Updates…", "Look for a newer release on GitHub")
+	showAddr := func() {
+		addr := cfg.ListenAddr()
+		copyOpenAI.SetTitle(fmt.Sprintf("Copy OpenAI Base URL  (http://%s/v1)", addr))
+		copyAnthropic.SetTitle(fmt.Sprintf("Copy Anthropic Base URL  (http://%s)", addr))
+		portItem.SetTitle(fmt.Sprintf("Port: %d…", portOf(addr)))
+	}
+	showAddr()
 	systray.AddSeparator()
 	about := systray.AddMenuItem("View on GitHub", repoURL)
 	author := systray.AddMenuItem("Made by Robinbinu", authorURL)
@@ -194,7 +210,11 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 		case proxyFail != nil:
 			status.SetTitle("Proxy stopped: " + proxyFail.Error())
 		default:
-			status.SetTitle("Running on " + cfg.Listen)
+			line := "Running on " + cfg.ListenAddr()
+			if moved != "" {
+				line += fmt.Sprintf("  (port %d was taken)", portOf(moved))
+			}
+			status.SetTitle(line)
 		}
 		if runner.Running() {
 			power.SetTitle("Stop Proxy")
@@ -204,6 +224,50 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 		setState(stateFor(proxyFail, stopped, warn))
 	}
 	refresh()
+
+	portInputs := make(chan portInput, 1)
+	// changePort moves the proxy to a port the user typed, keeping it off if
+	// they had turned it off.
+	changePort := func(in portInput) {
+		showAddr()
+		switch {
+		case in.err != nil:
+			fmt.Fprintln(os.Stderr, "error: port dialog:", in.err)
+			portItem.SetTitle("Port: " + in.err.Error())
+			return
+		case !in.ok:
+			return
+		}
+		port, err := parsePort(in.text)
+		if err != nil {
+			portItem.SetTitle(fmt.Sprintf("Port: %d… (%s)", portOf(cfg.ListenAddr()), err))
+			return
+		}
+		addr := withPort(cfg.ListenAddr(), port)
+		if addr == cfg.ListenAddr() {
+			return
+		}
+		if !portFree(addr) {
+			portItem.SetTitle(fmt.Sprintf("Port: %d… (%d is in use)", portOf(cfg.ListenAddr()), port))
+			return
+		}
+		wasRunning := runner.Running()
+		runner.Stop()
+		runner.SetAddr(addr)
+		cfg.SetListen(addr)
+		if err := cfg.Save(); err != nil {
+			fmt.Fprintln(os.Stderr, "error: saving port:", err)
+		}
+		moved = ""
+		proxyFail = nil
+		if wasRunning || !stopped {
+			if proxyFail = runner.Start(); proxyFail != nil {
+				fmt.Fprintln(os.Stderr, "error:", proxyFail)
+			}
+		}
+		showAddr()
+		refresh()
+	}
 
 	updates := make(chan updateResult, 1)
 	var available *update.Release
@@ -280,14 +344,23 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, startEr
 				}
 				refresh()
 			case <-copyOpenAI.ClickedCh:
-				_ = clipboardCopy(fmt.Sprintf("http://%s/v1", cfg.Listen))
+				_ = clipboardCopy(fmt.Sprintf("http://%s/v1", cfg.ListenAddr()))
 			case <-copyAnthropic.ClickedCh:
-				_ = clipboardCopy(fmt.Sprintf("http://%s", cfg.Listen))
+				_ = clipboardCopy(fmt.Sprintf("http://%s", cfg.ListenAddr()))
 			case <-copyKey.ClickedCh:
 				_ = clipboardCopy(cfg.LocalKey())
 			case <-rotate.ClickedCh:
 				cfg.RotateLocalKey()
 				_ = cfg.Save()
+			case <-portItem.ClickedCh:
+				cur := strconv.Itoa(portOf(cfg.ListenAddr()))
+				go func() {
+					text, ok, err := promptText("Patchbay",
+						"Port for Patchbay (1024–65535). Tools must use the new base URL afterwards.", cur)
+					portInputs <- portInput{text, ok, err}
+				}()
+			case in := <-portInputs:
+				changePort(in)
 			case <-atLogin.ClickedCh:
 				if err := autostart.Set(!atLogin.Checked()); err != nil {
 					fmt.Fprintln(os.Stderr, "error: launch at login:", err)

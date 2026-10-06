@@ -312,6 +312,7 @@ patchbay provider add <id> <kind> [base_url]
 patchbay provider key <id> <api-key>
 patchbay provider rm <id>
 patchbay key [rotate]                  Print (or rotate) the local API key
+patchbay port [number]                 Print (or set) the port
 patchbay version                       Print the version
 ```
 
@@ -339,11 +340,14 @@ under your account, much like their official CLIs do. You are responsible for
 using your subscriptions within each provider's terms.
 
 **Port 8787 is taken.**
-Change `listen` in `~/.patchbay/config.json` (e.g. `"127.0.0.1:8788"`) and
-restart Patchbay.
+Patchbay handles it: if something else holds the port, it moves to the next
+free one (8788, 8789, …), saves it, and the menu shows the new address. To
+pick a port yourself, use **Port…** in the menu or `patchbay port 9000`.
+Either way, update the base URL in your tools.
 
 **The menu-bar app and `patchbay serve` at the same time?**
-Run one. They share the same config and port, so the second one can't listen.
+Run one. They share the same config; the second one sees Patchbay already
+running on the port and stops instead of starting a duplicate.
 
 **How do I update?**
 The menu shows **Update Available: vX — Download** when a new release is out

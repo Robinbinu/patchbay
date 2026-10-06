@@ -26,6 +26,9 @@ First public beta.
 - **Check for updates** from the menu; the app also checks GitHub Releases at
   launch and daily (beta builds are offered betas, stable builds only stable).
 - Mono provider icons in the menu, tinted for light and dark menus on macOS.
+- Port handling: a port taken by another app moves Patchbay to the next free
+  one (saved); a second Patchbay won't start on top of the first; choose a
+  port from the menu (**Port…**) or with `patchbay port <number>`.
 - `/v1/models` is sorted, includes `created`, and answers Anthropic clients in
   the Anthropic list format with only the models that work on `/v1/messages`.
 - macOS universal `Patchbay.app` (in a `.dmg`), Windows tray app with icon and
