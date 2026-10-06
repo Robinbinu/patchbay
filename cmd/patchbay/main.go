@@ -61,8 +61,11 @@ func runServe(cfg *config.Config, mgr *auth.Manager) {
 	fmt.Printf("  OpenAI base:    http://%s/v1\n", cfg.Listen)
 	fmt.Printf("  Anthropic base: http://%s\n", cfg.Listen)
 	fmt.Println("  Endpoints: /v1/models  /v1/chat/completions  /v1/responses  /v1/messages")
-	startTray(cfg, mgr) // no-op unless built with -tags tray
-	check(proxy.ListenAndServe(cfg.Listen, srv.Handler()))
+	// The HTTP server runs on a background goroutine so the main goroutine is
+	// free for the UI loop: on macOS the menu-bar (Cocoa) event loop must own
+	// the main thread. Without -tags tray, runUI just blocks.
+	go func() { check(proxy.ListenAndServe(cfg.Listen, srv.Handler())) }()
+	runUI(cfg, mgr)
 }
 
 func runLogin(cfg *config.Config, mgr *auth.Manager, args []string) {

@@ -7,6 +7,8 @@ import (
 	"github.com/robin/patchbay/internal/config"
 )
 
-// startTray is a no-op in the default build. Build with `-tags tray` for the
-// menu-bar UI (pulls in fyne.io/systray).
-func startTray(_ *config.Config, _ *auth.Manager) {}
+// runUI blocks forever in the default build; the HTTP server runs on its own
+// goroutine. Build with `-tags tray` for the menu-bar UI (fyne.io/systray).
+func runUI(_ *config.Config, _ *auth.Manager) {
+	select {}
+}
