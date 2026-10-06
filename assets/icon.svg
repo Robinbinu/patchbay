@@ -1,0 +1,34 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Patchbay">
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="cable" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <!-- rounded patch panel -->
+  <rect x="56" y="80" width="400" height="352" rx="56" fill="url(#panel)" filter="url(#soft)"/>
+  <rect x="56" y="80" width="400" height="352" rx="56" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="2"/>
+
+  <!-- jack holes: 2 rows x 3 cols -->
+  <g fill="#0b0b14">
+    <circle cx="160" cy="208" r="34"/><circle cx="256" cy="208" r="34"/><circle cx="352" cy="208" r="34"/>
+    <circle cx="160" cy="320" r="34"/><circle cx="256" cy="320" r="34"/><circle cx="352" cy="320" r="34"/>
+  </g>
+  <g fill="#ffffff" fill-opacity="0.16">
+    <circle cx="160" cy="208" r="16"/><circle cx="256" cy="208" r="16"/><circle cx="352" cy="208" r="16"/>
+    <circle cx="160" cy="320" r="16"/><circle cx="256" cy="320" r="16"/><circle cx="352" cy="320" r="16"/>
+  </g>
+
+  <!-- patch cable routing top-left jack to bottom-right jack -->
+  <path d="M160 208 C 160 120, 420 120, 352 320" fill="none" stroke="url(#cable)" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="160" cy="208" r="20" fill="url(#cable)"/>
+  <circle cx="352" cy="320" r="20" fill="url(#cable)"/>
+</svg>

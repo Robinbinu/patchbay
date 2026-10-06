@@ -122,7 +122,25 @@ func Load() (*Config, error) {
 	if c.LocalAPIKey == "" {
 		c.LocalAPIKey = newLocalKey()
 	}
+	// Backfill seeded providers added in newer versions so an existing config
+	// gains them (e.g. grok, openrouter) without losing the user's own entries.
+	if c.ensureSeeded() {
+		_ = c.Save()
+	}
 	return c, nil
+}
+
+// ensureSeeded adds any default provider missing from the loaded config,
+// matched by ID. Returns whether anything changed.
+func (c *Config) ensureSeeded() bool {
+	changed := false
+	for _, def := range Default().Providers {
+		if _, ok := c.Provider(def.ID); !ok {
+			c.Providers = append(c.Providers, def)
+			changed = true
+		}
+	}
+	return changed
 }
 
 // Save atomically writes the document back.
