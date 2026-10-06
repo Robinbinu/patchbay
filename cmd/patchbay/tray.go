@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -17,9 +18,10 @@ import (
 // runUI runs the menu-bar event loop on the main goroutine. On macOS the Cocoa
 // loop systray drives must own the main thread, so the caller runs the HTTP
 // server on a background goroutine and calls this last. systray.Run blocks
-// until the user quits.
-func runUI(cfg *config.Config, mgr *auth.Manager) {
-	systray.Run(func() { onReady(cfg, mgr) }, func() { os.Exit(0) })
+// until the user quits. If the server stops (say its port is taken), the icon
+// shows it instead of the app vanishing.
+func runUI(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
+	systray.Run(func() { onReady(cfg, mgr, proxyErr) }, func() { os.Exit(0) })
 }
 
 // providerMenu is the set of items that make up one provider's submenu.
@@ -32,15 +34,33 @@ type providerMenu struct {
 	logout  *systray.MenuItem
 }
 
-func onReady(cfg *config.Config, mgr *auth.Manager) {
-	icon := trayIconPNG()
-	systray.SetTemplateIcon(icon, icon)
-	systray.SetTitle("")
-	systray.SetTooltip("Patchbay — model proxy")
+func onReady(cfg *config.Config, mgr *auth.Manager, proxyErr <-chan error) {
+	var shown []byte
+	setState := func(st trayState) {
+		if icon := trayIcon(st); !bytes.Equal(icon, shown) {
+			shown = icon
+			if templateIcon {
+				systray.SetTemplateIcon(icon, icon)
+			} else {
+				systray.SetIcon(icon)
+			}
+		}
+		switch st {
+		case stateProxyDown:
+			systray.SetTooltip("Patchbay — proxy stopped")
+		case stateNeedsLogin:
+			systray.SetTooltip("Patchbay — a provider needs you to sign in")
+		default:
+			systray.SetTooltip("Patchbay — model proxy")
+		}
+	}
 
 	// ---- header: endpoint + key -------------------------------------------
 	header := systray.AddMenuItem("Patchbay", "")
 	header.Disable()
+	down := systray.AddMenuItem("", "Patchbay could not serve on its address")
+	down.Disable()
+	down.Hide()
 	ep := systray.AddMenuItem(fmt.Sprintf("Endpoint  http://%s", cfg.Listen), "OpenAI base is /v1; Anthropic base is the root")
 	copyEP := ep.AddSubMenuItem("Copy OpenAI base URL", "")
 	copyKey := ep.AddSubMenuItem("Copy local API key", "")
@@ -84,6 +104,7 @@ func onReady(cfg *config.Config, mgr *auth.Manager) {
 	systray.AddSeparator()
 	quit := systray.AddMenuItem("Quit Patchbay", "Stop the proxy and the menu bar")
 
+	var proxyFail error
 	refresh := func() {
 		warn := false
 		for _, s := range mgr.Statuses(cfg) {
@@ -118,11 +139,11 @@ func onReady(cfg *config.Config, mgr *auth.Manager) {
 				warn = true
 			}
 		}
-		if warn {
-			systray.SetTitle(" ⚠")
-		} else {
-			systray.SetTitle("")
+		if proxyFail != nil {
+			down.SetTitle("Proxy stopped: " + proxyFail.Error())
+			down.Show()
 		}
+		setState(stateFor(proxyFail, warn))
 	}
 	refresh()
 
@@ -131,6 +152,10 @@ func onReady(cfg *config.Config, mgr *auth.Manager) {
 		for {
 			select {
 			case <-ticker.C:
+				refresh()
+			case err := <-proxyErr:
+				fmt.Fprintln(os.Stderr, "error:", err)
+				proxyFail = err
 				refresh()
 			case <-copyEP.ClickedCh:
 				_ = clipboardCopy(fmt.Sprintf("http://%s/v1", cfg.Listen))

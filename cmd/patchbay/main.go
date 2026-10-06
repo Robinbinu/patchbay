@@ -63,9 +63,10 @@ func runServe(cfg *config.Config, mgr *auth.Manager) {
 	fmt.Println("  Endpoints: /v1/models  /v1/chat/completions  /v1/responses  /v1/messages")
 	// The HTTP server runs on a background goroutine so the main goroutine is
 	// free for the UI loop: on macOS the menu-bar (Cocoa) event loop must own
-	// the main thread. Without -tags tray, runUI just blocks.
-	go func() { check(proxy.ListenAndServe(cfg.Listen, srv.Handler())) }()
-	runUI(cfg, mgr)
+	// the main thread. Without -tags tray, runUI exits when the server stops.
+	proxyErr := make(chan error, 1)
+	go func() { proxyErr <- proxy.ListenAndServe(cfg.Listen, srv.Handler()) }()
+	runUI(cfg, mgr, proxyErr)
 }
 
 func runLogin(cfg *config.Config, mgr *auth.Manager, args []string) {
