@@ -14,15 +14,28 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/robin/patchbay/internal/auth"
-	"github.com/robin/patchbay/internal/config"
-	"github.com/robin/patchbay/internal/proxy"
+	"github.com/Robinbinu/patchbay/internal/auth"
+	"github.com/Robinbinu/patchbay/internal/config"
+	"github.com/Robinbinu/patchbay/internal/proxy"
 )
 
+// version is stamped at release build time with -ldflags "-X main.version=…".
+var version = "dev"
+
+// appBuild is stamped to "1" for the double-clickable macOS .app and Windows
+// GUI builds, which the OS launches with no arguments.
+var appBuild = ""
+
 func main() {
-	if len(os.Args) < 2 {
+	args := commandArgs(os.Args[1:], appBuild == "1")
+	if len(args) < 1 {
 		usage()
 		os.Exit(2)
+	}
+	switch args[0] {
+	case "version", "--version", "-v":
+		fmt.Println("patchbay", version)
+		return
 	}
 	cfg, err := config.Load()
 	check(err)
@@ -30,8 +43,8 @@ func main() {
 	check(err)
 	mgr := auth.NewManager(store)
 
-	cmd := os.Args[1]
-	args := os.Args[2:]
+	cmd := args[0]
+	args = args[1:]
 	switch cmd {
 	case "serve":
 		runServe(cfg, mgr)
@@ -135,7 +148,7 @@ func runProvider(cfg *config.Config, args []string) {
 	case "add":
 		if len(args) < 3 {
 			fmt.Fprintln(os.Stderr, "usage: patchbay provider add <id> <kind> [base_url]")
-			fmt.Fprintln(os.Stderr, "kinds: "+strings.Join([]string{config.KindOpenAIKey, config.KindAnthropicKey, config.KindCodexOAuth, config.KindAnthropicOAuth}, ", "))
+			fmt.Fprintln(os.Stderr, "kinds: "+strings.Join([]string{config.KindOpenAIKey, config.KindAnthropicKey, config.KindCodexOAuth, config.KindAnthropicOAuth, config.KindXAIOAuth, config.KindOpenRouterOAuth}, ", "))
 			os.Exit(2)
 		}
 		p := config.Provider{ID: args[1], Kind: args[2], Label: args[1], Enabled: true}
@@ -194,20 +207,36 @@ func usage() {
 
 Usage:
   patchbay serve                      Start the proxy (and menu bar, if built with -tags tray)
-  patchbay login <id>                 Sign in to an OAuth provider (codex, claude)
+  patchbay login <id>                 Sign in to an OAuth provider (codex, claude, grok, openrouter)
   patchbay logout <id>                Forget an OAuth provider's credentials
   patchbay status                     Show every provider's sign-in and expiry
   patchbay provider add <id> <kind> [base_url]
   patchbay provider key <id> <api-key>
   patchbay provider rm <id>
   patchbay key [rotate]               Print (or rotate) the local API key
+  patchbay version                    Print the Patchbay version
 
 Provider kinds:
   codex-oauth      ChatGPT plan (Codex), OAuth
   anthropic-oauth  Claude Pro/Max, OAuth
+  xai-oauth        Grok (SuperGrok / X Premium+), OAuth device code
+  openrouter-oauth OpenRouter, OAuth
   anthropic-key    Anthropic Console API key
   openai-key       OpenAI-compatible API key (OpenAI, OpenRouter, DeepSeek, …)
 `)
+}
+
+// commandArgs returns the command line to run. An app build launched with no
+// command starts serving. Older macOS appends a -psn_… process serial number
+// when launching from Finder, which is not a command.
+func commandArgs(args []string, app bool) []string {
+	if len(args) > 0 && strings.HasPrefix(args[0], "-psn_") {
+		args = args[1:]
+	}
+	if len(args) == 0 && app {
+		return []string{"serve"}
+	}
+	return args
 }
 
 func dash(s string) string {
