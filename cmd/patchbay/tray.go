@@ -394,6 +394,11 @@ func onReady(cfg *config.Config, mgr *auth.Manager, runner *proxyRunner, moved s
 // to use, which the menu shows as a checkmark), and whether to badge the icon.
 func describe(s auth.Status) (state, account, expiry, action string, needLogin bool) {
 	switch {
+	case s.Local && s.SignedIn:
+		return "running", s.Address, "", "", false
+	case s.Local:
+		// A local server that isn't running is normal, not a problem to badge.
+		return "not running", s.Address, "", "  —  Not Running", false
 	case s.NeedsKey:
 		return "no API key", "", "", "  —  Add API Key", false
 	case !s.SignedIn:

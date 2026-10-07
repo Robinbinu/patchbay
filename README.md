@@ -243,10 +243,30 @@ print(client.chat.completions.create(
 | Grok (SuperGrok / X Premium+) | `xai-oauth` | OAuth (device code) | `responses` |
 | OpenRouter | `openrouter-oauth` | OAuth (browser) → durable key | `chat` |
 | Anthropic Console | `anthropic-key` | API key | `messages` |
-| Any OpenAI-compatible API (OpenAI, DeepSeek, Together, Groq, local servers, …) | `openai-key` | API key + optional base URL | `chat` / `responses` |
+| Any OpenAI-compatible API (OpenAI, DeepSeek, Together, Groq, …) | `openai-key` | API key + optional base URL | `chat` / `responses` |
+| **Ollama** on this machine | `ollama` | none, just run it | **any** |
+| **LM Studio** on this machine | `lmstudio` | none (optional key) | **any** |
 
-`codex`, `claude`, `grok` and `openrouter` are configured out of the box: just
-log in. Add more with `patchbay provider add <id> <kind> [base_url]`.
+`codex`, `claude`, `grok`, `openrouter`, `ollama` and `lmstudio` are configured
+out of the box: log in to the accounts, or start Ollama / LM Studio's server.
+Add more with `patchbay provider add <id> <kind> [base_url]`.
+
+### Local models (Ollama, LM Studio)
+
+Start Ollama, or LM Studio's local server, and its models join the list as
+`ollama/<model>` and `lmstudio/<model>`. Both speak OpenAI Chat Completions,
+Responses *and* Anthropic Messages, so a local model works from **every**
+endpoint: Claude Code, the OpenAI SDK and Chat-Completions tools alike. The menu
+shows each as running or not; nothing to sign in to.
+
+Patchbay looks for them at their default addresses (`127.0.0.1:11434` and
+`127.0.0.1:1234`). For another machine or port:
+
+```bash
+patchbay provider add ollama ollama http://gpu-box:11434
+patchbay provider add lmstudio lmstudio http://127.0.0.1:4321
+patchbay provider key lmstudio <token>   # only if LM Studio requires one
+```
 
 The OAuth flows (PKCE, loopback callback, device code, token refresh, identity
 and expiry) follow the approach used by
@@ -361,6 +381,7 @@ The menu-bar icon shows a badge. Open the provider's submenu and click
 ## Roadmap
 
 - [ ] Cross-format translation (call any model through any endpoint)
+- [x] Local models: Ollama and LM Studio
 - [ ] More providers: Z.AI, Kimi Code, Gemini, GitHub Copilot
 - [ ] Notarized macOS and signed Windows builds
 - [ ] Homebrew / Scoop / winget packages

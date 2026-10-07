@@ -141,8 +141,13 @@ func runStatus(cfg *config.Config, mgr *auth.Manager) {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(tw, "PROVIDER\tKIND\tSTATE\tACCOUNT\tACCESS EXPIRES\tLOGIN EXPIRES")
 	for _, s := range mgr.Statuses(cfg) {
-		state := "signed out"
+		state, account := "signed out", s.Email
 		switch {
+		case s.Local:
+			state, account = "not running", s.Address
+			if s.SignedIn {
+				state = "running"
+			}
 		case s.NeedsKey:
 			state = "no key"
 		case s.GrantExpired:
@@ -153,7 +158,7 @@ func runStatus(cfg *config.Config, mgr *auth.Manager) {
 			state = "ok"
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			s.ID, s.Kind, state, dash(s.Email),
+			s.ID, s.Kind, state, dash(account),
 			until(s.AccessExpiry), until(s.GrantExpiry))
 	}
 	tw.Flush()
@@ -168,7 +173,7 @@ func runProvider(cfg *config.Config, args []string) {
 	case "add":
 		if len(args) < 3 {
 			fmt.Fprintln(os.Stderr, "usage: patchbay provider add <id> <kind> [base_url]")
-			fmt.Fprintln(os.Stderr, "kinds: "+strings.Join([]string{config.KindOpenAIKey, config.KindAnthropicKey, config.KindCodexOAuth, config.KindAnthropicOAuth, config.KindXAIOAuth, config.KindOpenRouterOAuth}, ", "))
+			fmt.Fprintln(os.Stderr, "kinds: "+strings.Join([]string{config.KindOpenAIKey, config.KindAnthropicKey, config.KindCodexOAuth, config.KindAnthropicOAuth, config.KindXAIOAuth, config.KindOpenRouterOAuth, config.KindOllama, config.KindLMStudio}, ", "))
 			os.Exit(2)
 		}
 		p := config.Provider{ID: args[1], Kind: args[2], Label: args[1], Enabled: true}
@@ -244,6 +249,8 @@ Provider kinds:
   openrouter-oauth OpenRouter, OAuth
   anthropic-key    Anthropic Console API key
   openai-key       OpenAI-compatible API key (OpenAI, OpenRouter, DeepSeek, …)
+  ollama           Ollama on this machine (default http://127.0.0.1:11434), no key
+  lmstudio         LM Studio on this machine (default http://127.0.0.1:1234)
 `)
 }
 

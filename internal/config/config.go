@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -22,7 +23,31 @@ const (
 	KindOpenAIKey       = "openai-key"       // OpenAI-compatible API key, Chat/Responses
 	KindXAIOAuth        = "xai-oauth"        // Grok (SuperGrok/X Premium+), OAuth device-code, Responses API
 	KindOpenRouterOAuth = "openrouter-oauth" // OpenRouter, OAuth (PKCE) → durable key, Chat API
+	KindOllama          = "ollama"           // Ollama server on this machine; OpenAI and Anthropic APIs, no key
+	KindLMStudio        = "lmstudio"         // LM Studio server on this machine; OpenAI and Anthropic APIs, optional key
 )
+
+// LocalKind reports whether a provider kind is a model server on this machine
+// rather than an account: nothing to sign in to, it is either running or not.
+func LocalKind(kind string) bool {
+	return kind == KindOllama || kind == KindLMStudio
+}
+
+// LocalBase is a local server's root URL: its base_url, or the server's
+// default address. Its OpenAI endpoints and Anthropic's /v1/messages all live
+// under /v1, so a base_url given with a trailing /v1 is accepted too.
+func LocalBase(p Provider) string {
+	base := p.BaseURL
+	if base == "" {
+		switch p.Kind {
+		case KindOllama:
+			base = "http://127.0.0.1:11434"
+		case KindLMStudio:
+			base = "http://127.0.0.1:1234"
+		}
+	}
+	return strings.TrimSuffix(strings.TrimRight(base, "/"), "/v1")
+}
 
 // OAuthKind reports whether a provider kind signs in interactively (vs. a key).
 func OAuthKind(kind string) bool {
@@ -103,6 +128,8 @@ func defaultProviders() []Provider {
 		{ID: "claude", Kind: KindAnthropicOAuth, Label: "Claude (Pro/Max)", Enabled: true},
 		{ID: "grok", Kind: KindXAIOAuth, Label: "Grok (xAI)", Enabled: true},
 		{ID: "openrouter", Kind: KindOpenRouterOAuth, Label: "OpenRouter", Enabled: true},
+		{ID: "ollama", Kind: KindOllama, Label: "Ollama", Enabled: true},
+		{ID: "lmstudio", Kind: KindLMStudio, Label: "LM Studio", Enabled: true},
 	}
 }
 

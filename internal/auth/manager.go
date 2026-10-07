@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -152,17 +154,34 @@ type Status struct {
 	Plan         string // OrgName (plan type for Codex, org name for Claude)
 	AccessExpiry time.Time
 	GrantExpiry  time.Time
-	Expired      bool // access token past deadline
-	GrantExpired bool // whole grant gone; needs interactive re-login
-	NeedsKey     bool // key-based provider missing its key
+	Expired      bool   // access token past deadline
+	GrantExpired bool   // whole grant gone; needs interactive re-login
+	NeedsKey     bool   // key-based provider missing its key
+	Local        bool   // a model server on this machine; SignedIn means it answered
+	Address      string // where a local server is expected, e.g. 127.0.0.1:11434
 }
 
-// Statuses builds a status row for every configured provider.
+// Statuses builds a status row for every configured provider. Local servers
+// are probed in parallel, so a stopped one costs nothing and a hung one at
+// most localProbeTimeout.
 func (m *Manager) Statuses(cfg *config.Config) []Status {
-	out := make([]Status, 0, len(cfg.Providers))
-	for _, p := range cfg.Providers {
-		s := Status{ID: p.ID, Label: p.Label, Kind: p.Kind}
+	out := make([]Status, len(cfg.Providers))
+	var wg sync.WaitGroup
+	for i, p := range cfg.Providers {
+		s := &out[i]
+		*s = Status{ID: p.ID, Label: p.Label, Kind: p.Kind}
 		switch {
+		case config.LocalKind(p.Kind):
+			s.Local = true
+			base := config.LocalBase(p)
+			if u, err := url.Parse(base); err == nil {
+				s.Address = u.Host
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				s.SignedIn = localRunning(base, p.APIKey)
+			}()
 		case config.OAuthKind(p.Kind):
 			if c, ok := m.store.Get(p.ID); ok {
 				s.SignedIn = true
@@ -181,7 +200,28 @@ func (m *Manager) Statuses(cfg *config.Config) []Status {
 			s.SignedIn = p.APIKey != ""
 			s.NeedsKey = p.APIKey == ""
 		}
-		out = append(out, s)
 	}
+	wg.Wait()
 	return out
+}
+
+const localProbeTimeout = 700 * time.Millisecond
+
+// localRunning reports whether a local model server answers its model list.
+func localRunning(base, key string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), localProbeTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/models", nil)
+	if err != nil {
+		return false
+	}
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode/100 == 2
 }

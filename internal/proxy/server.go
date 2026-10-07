@@ -89,7 +89,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("anthropic-version") != "" {
 		data := make([]map[string]any, 0, len(models))
 		for _, m := range models {
-			if m.Surface != providers.SurfaceMessages {
+			if m.Surface != providers.SurfaceMessages && m.Surface != providers.SurfaceAny {
 				continue
 			}
 			name := m.Label

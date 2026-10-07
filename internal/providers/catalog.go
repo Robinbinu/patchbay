@@ -19,6 +19,9 @@ const (
 	SurfaceMessages  = "messages" // Anthropic /v1/messages
 	SurfaceChat      = "chat"     // OpenAI /v1/chat/completions
 	SurfaceResponses = "responses"
+	// SurfaceAny marks a model reachable through every endpoint: local servers
+	// (Ollama, LM Studio) speak Chat Completions, Responses and Messages.
+	SurfaceAny = "any"
 )
 
 // Codex backend constants (omp wire/codex.ts). Honest Patchbay identity on the
@@ -60,9 +63,14 @@ func BaseURL(p config.Provider) string {
 		return xaiBase
 	case config.KindOpenRouterOAuth:
 		return openrouterBase
+	case config.KindOllama, config.KindLMStudio:
+		return config.LocalBase(p)
 	}
 	return ""
 }
+
+// LocalRoot is a local server's root URL; see config.LocalBase.
+func LocalRoot(p config.Provider) string { return config.LocalBase(p) }
 
 // Surface returns the API surface a provider kind speaks.
 func Surface(kind string) string {
@@ -73,6 +81,8 @@ func Surface(kind string) string {
 		return SurfaceResponses
 	case config.KindOpenAIKey, config.KindOpenRouterOAuth:
 		return SurfaceChat
+	case config.KindOllama, config.KindLMStudio:
+		return SurfaceAny
 	}
 	return ""
 }
@@ -90,8 +100,40 @@ func Models(ctx context.Context, mgr *auth.Manager, p config.Provider) ([]Model,
 		return bearerModels(ctx, mgr, p, SurfaceResponses)
 	case config.KindOpenRouterOAuth:
 		return bearerModels(ctx, mgr, p, SurfaceChat)
+	case config.KindOllama, config.KindLMStudio:
+		return localModels(ctx, p)
 	}
 	return nil, fmt.Errorf("unknown provider kind %q", p.Kind)
+}
+
+// localModels lists what a local server has installed. A stopped server
+// answers at once (connection refused); the short timeout covers a hung one,
+// so it can't stall the merged model list.
+func localModels(ctx context.Context, p config.Provider) ([]Model, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, LocalRoot(p)+"/v1/models", nil)
+	if p.APIKey != "" { // LM Studio can require one; Ollama ignores it
+		req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	}
+	req.Header.Set("Accept", "application/json")
+	body, err := doJSON(req)
+	if err != nil {
+		return nil, err
+	}
+	var parsed struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, err
+	}
+	out := make([]Model, 0, len(parsed.Data))
+	for _, e := range parsed.Data {
+		out = append(out, Model{ID: e.ID, Provider: p.ID, Surface: SurfaceAny})
+	}
+	return out, nil
 }
 
 func codexModels(ctx context.Context, mgr *auth.Manager, p config.Provider) ([]Model, error) {
