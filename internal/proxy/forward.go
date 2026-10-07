@@ -77,6 +77,19 @@ func (s *Server) forward(w http.ResponseWriter, r *http.Request, p config.Provid
 }
 
 func upstreamURL(p config.Provider, surface string) (string, error) {
+	if config.LocalKind(p.Kind) {
+		// Local servers take every surface at its standard path.
+		root := providers.LocalRoot(p)
+		switch surface {
+		case providers.SurfaceMessages:
+			return root + "/v1/messages", nil
+		case providers.SurfaceChat:
+			return root + "/v1/chat/completions", nil
+		case providers.SurfaceResponses:
+			return root + "/v1/responses", nil
+		}
+		return "", errBadSurface(surface)
+	}
 	base := providers.BaseURL(p)
 	switch surface {
 	case providers.SurfaceMessages:
@@ -142,6 +155,15 @@ func (s *Server) applyUpstreamAuth(r *http.Request, req *http.Request, p config.
 
 	case config.KindOpenAIKey:
 		req.Header.Set("Authorization", "Bearer "+p.APIKey)
+
+	case config.KindOllama, config.KindLMStudio:
+		if p.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+p.APIKey)
+			req.Header.Set("x-api-key", p.APIKey)
+		}
+		if v := r.Header.Get("anthropic-version"); v != "" {
+			req.Header.Set("anthropic-version", v)
+		}
 
 	case config.KindXAIOAuth, config.KindOpenRouterOAuth:
 		// Both authenticate with a plain bearer: xAI an OAuth access token,

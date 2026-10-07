@@ -59,7 +59,7 @@ func TestLegacyConfigBackfillsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"codex", "claude", "grok", "openrouter"} {
+	for _, id := range []string{"codex", "claude", "grok", "openrouter", "ollama", "lmstudio"} {
 		if !ids(c)[id] {
 			t.Errorf("legacy config missing %q after backfill", id)
 		}

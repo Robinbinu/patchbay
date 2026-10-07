@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -147,4 +149,27 @@ func setHome(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
+}
+
+func TestStatusesProbeLocalServers(t *testing.T) {
+	store, _ := openStores(t)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[]}`))
+	}))
+	defer up.Close()
+	down := httptest.NewServer(http.NotFoundHandler())
+	downURL := down.URL
+	down.Close()
+
+	cfg := &config.Config{Providers: []config.Provider{
+		{ID: "ollama", Kind: config.KindOllama, BaseURL: up.URL, Enabled: true},
+		{ID: "lmstudio", Kind: config.KindLMStudio, BaseURL: downURL, Enabled: true},
+	}}
+	st := NewManager(store).Statuses(cfg)
+	if !st[0].Local || !st[0].SignedIn || st[0].NeedsKey || st[0].Address != up.Listener.Addr().String() {
+		t.Errorf("running server: %+v", st[0])
+	}
+	if !st[1].Local || st[1].SignedIn || st[1].NeedsKey {
+		t.Errorf("stopped server: %+v", st[1])
+	}
 }
